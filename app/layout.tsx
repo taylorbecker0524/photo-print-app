@@ -2,37 +2,64 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Photo Print Studio — Print Your Memories',
-  description: 'Upload your photos, add date and location stamps, and we print and ship them straight to your door.',
+  title: 'Archive — Your memories, archived.',
+  description: 'Premium photo prints with date, time, and location stamps. Shipped straight to your door.',
   openGraph: {
-    title: 'Photo Print Studio',
-    description: 'Premium photo prints, shipped to your door.',
+    title: 'Archive',
+    description: 'Your memories, archived.',
   },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-stone-50 text-stone-900 min-h-screen">
-        <nav className="border-b border-stone-200 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-          <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-            <a href="/" className="font-display text-xl font-semibold tracking-tight">
-              Print<span className="text-brand-600">Studio</span>
+      <body>
+        <nav style={{
+          position: 'sticky', top: 0, zIndex: 100,
+          borderBottom: '1px solid rgba(43,42,40,0.08)',
+          background: 'rgba(247,243,238,0.85)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+        }}>
+          <div style={{
+            maxWidth: 1100, margin: '0 auto', padding: '0 24px',
+            height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <a href="/" style={{
+              fontFamily: "'Cormorant Garamond', Georgia, serif",
+              fontSize: 22, fontWeight: 500, letterSpacing: '0.08em',
+              color: '#2B2A28', textDecoration: 'none', textTransform: 'uppercase',
+            }}>
+              Archive
             </a>
-            <a
-              href="/orders"
-              className="text-sm text-stone-500 hover:text-stone-900 transition-colors"
-            >
-              Track my order
+            <a href="/orders" style={{
+              fontSize: 12, color: '#8A6F5A', textDecoration: 'none',
+              letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 500,
+            }}>
+              Track order
             </a>
           </div>
         </nav>
         <main>{children}</main>
-        <footer className="border-t border-stone-200 mt-24 py-10 text-center text-xs text-stone-400">
-          © {new Date().getFullYear()} PrintStudio · All prints are fulfilled by our print partners ·{' '}
-          <a href="mailto:hello@yourprintshop.com" className="hover:text-stone-600">Contact us</a>
+        <footer style={{
+          borderTop: '1px solid rgba(43,42,40,0.08)',
+          marginTop: 96, padding: '40px 24px',
+          textAlign: 'center',
+        }}>
+          <p style={{
+            fontFamily: "'Cormorant Garamond', Georgia, serif",
+            fontSize: 18, color: '#8A6F5A', fontStyle: 'italic', marginBottom: 8,
+          }}>
+            Your memories, archived.
+          </p>
+          <p style={{ fontSize: 11, color: '#8A6F5A', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            © {new Date().getFullYear()} Archive &nbsp;·&nbsp;{' '}
+            <a href="mailto:hello@archiveprints.com" style={{ color: '#8A6F5A' }}>Contact</a>
+          </p>
         </footer>
       </body>
     </html>
+  )
+}
   )
 }
