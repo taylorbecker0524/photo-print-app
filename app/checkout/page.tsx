@@ -14,6 +14,7 @@ const BULK_TIERS = [
   { minQty: 10,  prices: { '4x6': 0.79, '5x7': 1.29, '8x10': 2.19, 'square-4': 0.89, 'square-5': 1.29, 'square-8': 1.99 } },
   { minQty: 1,   prices: { '4x6': 0.99, '5x7': 1.49, '8x10': 2.49, 'square-4': 1.09, 'square-5': 1.49, 'square-8': 2.29 } },
 ]
+
 function getPrice(size: string, qty: number): number {
   const tier = BULK_TIERS.find(t => qty >= t.minQty) ?? BULK_TIERS[BULK_TIERS.length - 1]
   return (tier.prices as any)[size] ?? 0.99
@@ -34,10 +35,12 @@ export default function CheckoutPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [step, setStep] = useState<'shipping' | 'payment' | 'uploading' | 'processing'>('shipping')
   const [error, setError] = useState('')
-  const [clientSecret, setClientSecret] = useState('')
   const [orderId, setOrderId] = useState('')
+  const [stripeReady, setStripeReady] = useState(false)
   const paymentRef = useRef<HTMLDivElement>(null)
-  const [shipping, setShipping] = useState({ name: '', email: '', line1: '', line2: '', city: '', state: '', zip: '', country: 'US' })
+  const [shipping, setShipping] = useState({
+    name: '', email: '', line1: '', line2: '', city: '', state: '', zip: '', country: 'US'
+  })
 
   useEffect(() => {
     const stored = sessionStorage.getItem('print-cart')
@@ -50,35 +53,77 @@ export default function CheckoutPage() {
   const total = subtotal + 4.99
 
   const handleShippingSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(''); setStep('uploading')
+    e.preventDefault()
+    setError('')
+    setStep('uploading')
     try {
       const res = await fetch('/api/checkout', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: shipping.email,
-          items: cart.map(item => ({ size: item.size, quantity: item.quantity, stamp: item.stamp, photoPath: `uploads/placeholder-${item.fileName}` })),
-          shippingAddress: { name: shipping.name, line1: shipping.line1, line2: shipping.line2, city: shipping.city, state: shipping.state, zip: shipping.zip, country: shipping.country },
+          items: cart.map(item => ({
+            size: item.size,
+            quantity: item.quantity,
+            stamp: item.stamp,
+            photoPath: `uploads/placeholder-${item.fileName}`,
+          })),
+          shippingAddress: {
+            name: shipping.name, line1: shipping.line1, line2: shipping.line2,
+            city: shipping.city, state: shipping.state, zip: shipping.zip, country: shipping.country,
+          },
         }),
       })
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json()
-      setClientSecret(data.clientSecret); setOrderId(data.orderId); setStep('payment')
+      setOrderId(data.orderId)
+      setStep('payment')
+
+      // Mount Stripe Elements after state update
       setTimeout(async () => {
         const stripe = await stripePromise
         if (!stripe || !paymentRef.current) return
-        const elements = stripe.elements({ clientSecret: data.clientSecret, appearance: { theme: 'stripe', variables: { colorPrimary: '#D97A43', colorBackground: '#F7F3EE', fontFamily: 'Inter, system-ui, sans-serif' } } })
+        const elements = stripe.elements({
+          clientSecret: data.clientSecret,
+          appearance: {
+            theme: 'stripe',
+            variables: {
+              colorPrimary: '#D97A43',
+              colorBackground: '#F7F3EE',
+              fontFamily: 'Inter, system-ui, sans-serif',
+            },
+          },
+        })
         const paymentEl = elements.create('payment')
         paymentEl.mount(paymentRef.current)
+        paymentEl.on('ready', () => setStripeReady(true))
         ;(window as any).__stripeElements = { stripe, elements }
-      }, 100)
-    } catch (err: any) { setError(err.message ?? 'Something went wrong'); setStep('shipping') }
+      }, 200)
+    } catch (err: any) {
+      setError(err.message ?? 'Something went wrong')
+      setStep('shipping')
+    }
   }
 
   const handlePaymentSubmit = async () => {
+    if (!stripeReady) return
     setStep('processing')
-    const { stripe, elements } = (window as any).__stripeElements
-    const { error } = await stripe.confirmPayment({ elements, confirmParams: { return_url: `${window.location.origin}/orders/${orderId}?success=true` } })
-    if (error) { setError(error.message ?? 'Payment failed'); setStep('payment') }
+    try {
+      const { stripe, elements } = (window as any).__stripeElements
+      const { error: stripeError } = await stripe.confirmPayment({
+        elements,
+        confirmParams: {
+          return_url: `${window.location.origin}/orders/${orderId}?success=true`,
+        },
+      })
+      if (stripeError) {
+        setError(stripeError.message ?? 'Payment failed')
+        setStep('payment')
+      }
+    } catch (err: any) {
+      setError(err.message ?? 'Payment failed')
+      setStep('payment')
+    }
   }
 
   return (
@@ -105,7 +150,11 @@ export default function CheckoutPage() {
             })}
           </div>
 
-          {error && <div style={{ marginBottom: 16, padding: '12px 16px', background: '#FDE8E8', border: '1px solid #F5C6C6', borderRadius: 10, color: '#C0392B', fontSize: 13 }}>{error}</div>}
+          {error && (
+            <div style={{ marginBottom: 16, padding: '12px 16px', background: '#FDE8E8', border: '1px solid #F5C6C6', borderRadius: 10, color: '#C0392B', fontSize: 13 }}>
+              {error}
+            </div>
+          )}
 
           {(step === 'shipping' || step === 'uploading') && (
             <form onSubmit={handleShippingSubmit}>
@@ -155,10 +204,20 @@ export default function CheckoutPage() {
 
           {(step === 'payment' || step === 'processing') && (
             <div>
-              <div ref={paymentRef} style={{ minHeight: 200 }} />
-              <button onClick={handlePaymentSubmit} disabled={step === 'processing'} style={{ width: '100%', marginTop: 20, padding: 14, background: '#D97A43', color: '#F7F3EE', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'inherit', opacity: step === 'processing' ? 0.6 : 1 }}>
-                {step === 'processing' ? 'Processing...' : `Pay $${total.toFixed(2)}`}
-              </button>
+              {!stripeReady && (
+                <div style={{ textAlign: 'center', padding: '32px 0', color: '#8A6F5A', fontSize: 13 }}>
+                  Loading payment form...
+                </div>
+              )}
+              <div ref={paymentRef} style={{ minHeight: stripeReady ? 'auto' : 0 }} />
+              {stripeReady && (
+                <button
+                  onClick={handlePaymentSubmit}
+                  disabled={step === 'processing'}
+                  style={{ width: '100%', marginTop: 20, padding: 14, background: '#D97A43', color: '#F7F3EE', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: step === 'processing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: step === 'processing' ? 0.6 : 1 }}>
+                  {step === 'processing' ? 'Processing...' : `Pay $${total.toFixed(2)}`}
+                </button>
+              )}
             </div>
           )}
         </div>
