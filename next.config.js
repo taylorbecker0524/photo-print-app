@@ -5,8 +5,6 @@ const nextConfig = {
       { protocol: 'https', hostname: '*.supabase.co' },
     ],
   },
-  // Needed for Sharp image processing in API routes
-  serverExternalPackages: ['sharp'],
 }
 
 module.exports = nextConfig
