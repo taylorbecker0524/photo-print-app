@@ -5,7 +5,6 @@ export const metadata: Metadata = {
   title: 'archive — Print · Preserve · Cherish',
   description: 'Premium photo prints with date, time and location stamps. Upload your memories, we print and ship them to you.',
   openGraph: { title: 'archive', description: 'Print · Preserve · Cherish' },
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
