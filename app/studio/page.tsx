@@ -10,6 +10,7 @@ type StampConfig = {
   locationText: string; customText: string; style: StampStyle
   position: StampPos; capturedAt: string | null
   hasExifDate: boolean; hasExifLocation: boolean
+  dateFormat: 'modern' | 'classic'
 }
 type Photo = { id: string; file: File; url: string; sessionId: string; filter: Filter; stamp: StampConfig; size: string }
 type OrderItem = { id: string; photoId: string; url: string; fileName: string; filter: Filter; stamp: StampConfig; size: string; quantity: number }
