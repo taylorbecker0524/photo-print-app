@@ -249,7 +249,7 @@ export default function StudioPage(){
   const updateStamp=(id:string,u:Partial<StampConfig>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,stamp:{...p.stamp,...u}}:p));setAddedState(false)}
   const detectLocation=useCallback(()=>{navigator.geolocation?.getCurrentPosition(async pos=>{const loc=await reverseGeocode(pos.coords.latitude,pos.coords.longitude);if(loc&&activePhotoId)updateStamp(activePhotoId,{locationText:loc,showLocation:true})})},[activePhotoId])
   const applyBulk=()=>setPhotos(prev=>prev.map(p=>selectedIds.has(p.id)?{...p,filter:bulkFilter,stamp:{...p.stamp,style:bulkStyle}}:p))
-  const toggleSelect=(id:string)=>setSelectedIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);setPreviewIndex(0);return n})
+  const toggleSelect=(id:string)=>{setSelectedIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);setPreviewIndex(0);return n});if(!activePhotoId)setActivePhotoId(id);setAddedState(false)}
 
   const addToOrder=(photo:Photo)=>{
     setOrderItems(prev=>{
@@ -303,9 +303,11 @@ export default function StudioPage(){
       )}
 
       {/* Instructions */}
-      <div style={{background:'#EFE8DF',borderRadius:10,padding:'10px 16px',marginBottom:16,overflowX:'auto',whiteSpace:'nowrap'}}>
-        {['Tap a photo to customize','Set filter, date and stamp','Add to order','Checkout'].map((s,i)=>(
-          <span key={i} style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#8A6F5A',marginRight:20,letterSpacing:'0.04em',display:'inline-block'}}>{i+1}. {s}</span>
+      <div style={{background:'#2B2A28',borderRadius:10,padding:'10px 16px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'nowrap'}}>
+        {[{icon:'📷',label:'Customize'},{icon:'🔖',label:'Stamp'},{icon:'🛒',label:'Add to order'},{icon:'✅',label:'Checkout'}].map((s,i)=>(
+          <span key={i} style={{fontFamily:'Courier New, monospace',fontSize:isMobile?10:11,color:'rgba(247,243,238,0.85)',letterSpacing:'0.03em',display:'flex',alignItems:'center',gap:4,whiteSpace:'nowrap'}}>
+            <span>{s.icon}</span><span>{s.label}</span>
+          </span>
         ))}
       </div>
 
@@ -367,10 +369,6 @@ export default function StudioPage(){
                           )}
                         </div>
                         {inOrder>0&&<div style={{position:'absolute',top:-6,right:-6,width:22,height:22,background:'#D97A43',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'white',border:'2px solid #F7F3EE',zIndex:10}}>{inOrder}</div>}
-                        <button onClick={()=>addToOrder(photo)}
-                          style={{width:'100%',marginTop:6,padding:'8px',background:'#EFE8DF',border:'0.5px solid rgba(43,42,40,0.15)',borderRadius:7,fontSize:11,fontFamily:'Courier New, monospace',color:'#8A6F5A',cursor:'pointer',minHeight:36}}>
-                          + add to order
-                        </button>
                       </div>
                     )
                   })}
