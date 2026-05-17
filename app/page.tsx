@@ -2,14 +2,6 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
-const PHOTOS = [
-  { src: '/photos/photo1.jpg', stamp: '8 - 14 - 22', cap: null,               loc: null,                 rot: -4,   stampPos: 'br' },
-  { src: '/photos/photo2.jpg', stamp: '9 - 18 - 23', cap: null,               loc: 'SCOTLAND',           rot: 2.5,  stampPos: 'tr' },
-  { src: '/photos/photo3.jpg', stamp: '7 - 04 - 23', cap: 'first beach',      loc: null,                 rot: -2,   stampPos: 'br' },
-  { src: '/photos/photo4.jpg', stamp: '11 - 30 - 24', cap: null,              loc: null,                 rot: 3,    stampPos: 'br' },
-  { src: '/photos/photo5.jpg', stamp: '12 - 25 - 23', cap: 'first christmas', loc: 'Kennett Square, PA', rot: -1.5, stampPos: 'bl' },
-]
-
 const STORY = [
   '"nearing our daughter\'s first birthday, we wanted to archive all of our favorite moments — each beach trip, every christmas morning, her first steps, every ordinary tuesday that somehow felt extraordinary.',
   'we started printing her photos and stamping each one with the date and location it was taken. so that someday, when she holds a print in her hands, she can be taken right back to that moment.',
@@ -28,8 +20,6 @@ export default function HomePage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  const tape = <div style={{ position: 'absolute', width: 36, height: 10, background: 'rgba(255,235,170,0.78)', border: '0.5px solid rgba(200,165,80,0.3)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
-
   const HeartSig = () => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8, fontFamily: 'Courier New, monospace', fontSize: 9, color: '#8A6F5A' }}>
       <svg width="10" height="9" viewBox="0 0 24 22" fill="#D97A43"><path d="M12 21.593c-5.63-5.539-11-10.297-11-14.402 0-3.791 3.068-5.191 5.281-5.191 1.312 0 4.151.501 5.719 4.457 1.59-3.968 4.464-4.447 5.726-4.447 2.54 0 5.274 1.621 5.274 5.181 0 4.069-5.136 8.625-11 14.402z" /></svg>
@@ -37,10 +27,12 @@ export default function HomePage() {
     </div>
   )
 
+  const tapeTop = (w = 36) => <div style={{ position: 'absolute', width: w, height: 10, background: 'rgba(255,235,170,0.78)', border: '0.5px solid rgba(200,165,80,0.3)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
+
   return (
     <div style={{ width: '100%', overflowX: 'hidden' }}>
 
-      {/* How it works bar — full width, space-around */}
+      {/* How it works bar */}
       <div style={{ background: '#EFE8DF', borderBottom: '1px solid rgba(43,42,40,0.08)', padding: '10px 0', width: '100%', display: 'flex', alignItems: 'center' }}>
         {[
           { n: '1', title: 'Upload', sub: 'photos' },
@@ -58,50 +50,66 @@ export default function HomePage() {
         ))}
       </div>
 
-      {/* DESKTOP scrapbook — photos evenly spread using percentage widths */}
+      {/* DESKTOP scrapbook — two row layout matching reference */}
       {!isMobile && (
-        <div style={{ position: 'relative', height: 440, background: '#EDE6DC', overflow: 'hidden', width: '100%' }}>
+        <div style={{ position: 'relative', height: 460, background: '#EDE6DC', overflow: 'hidden', width: '100%' }}>
 
-          {/* 5 photos spread evenly across full width using percentages */}
-          {PHOTOS.map((p, i) => {
-            const lefts = ['1%', '20%', '39%', '58%', '77%']
-            const tops = [14, 6, 16, 8, 14]
-            const w = 140, h = 182
-            const stampStyle: React.CSSProperties = {
-              position: 'absolute',
-              fontFamily: 'Courier New, monospace',
-              color: '#E8841A',
-              fontWeight: 700,
-              fontSize: 7.5,
-              lineHeight: 1.4,
-              letterSpacing: '0.06em',
-              textShadow: '0 0 3px rgba(232,132,26,0.4)',
-              ...(p.stampPos === 'tr' ? { top: 8, right: 6 } :
-                  p.stampPos === 'tl' ? { top: 8, left: 6 } :
-                  p.stampPos === 'bl' ? { bottom: 25, left: 6 } :
-                  { bottom: 25, right: 6 })
-            }
-            return (
-              <div key={i} style={{ position: 'absolute', left: lefts[i], top: tops[i], zIndex: i + 1, background: 'white', padding: '5px 5px 20px', transform: `rotate(${p.rot}deg)`, boxShadow: '0 2px 8px rgba(43,42,40,0.1)' }}>
-                {tape}
-                <img src={p.src} alt={p.cap ?? 'memory'} style={{ width: w, height: h, objectFit: 'cover', display: 'block' }} loading="eager" />
-                <div style={stampStyle}>{p.stamp}{p.loc && <><br />{p.loc}</>}</div>
-                {p.cap && <div style={{ position: 'absolute', bottom: 4, left: 0, right: 0, textAlign: 'center', fontSize: 7.5, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>{p.cap}</div>}
-              </div>
-            )
-          })}
+          {/* Photo 1 — far left, partially cut, row 1 */}
+          <div style={{ position: 'absolute', left: -10, top: 10, zIndex: 3, background: 'white', padding: '6px 6px 22px', transform: 'rotate(-4deg)', boxShadow: '0 2px 8px rgba(43,42,40,0.1)' }}>
+            {tapeTop()}
+            <img src="/photos/photo1.jpg" alt="memory" style={{ width: 155, height: 200, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 25, right: 7, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>8 - 14 - 22</div>
+          </div>
 
-          {/* Story notecard — overlaps photos 1 and 2, high z-index */}
-          <div style={{ position: 'absolute', left: 'calc(1% + 100px)', top: 20, width: 170, background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '11px 13px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', zIndex: 30, transform: 'rotate(1.5deg)' }}>
-            <div style={{ position: 'absolute', width: 32, height: 10, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
+          {/* Story notecard — overlaps photo 1, sits on top */}
+          <div style={{ position: 'absolute', left: 130, top: 10, width: 200, background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '13px 15px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', zIndex: 20, transform: 'rotate(1deg)' }}>
+            <div style={{ position: 'absolute', width: 34, height: 10, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
             {STORY.map((p, i) => (
-              <p key={i} style={{ fontSize: 8, lineHeight: 1.65, color: '#5C4A3A', fontStyle: 'italic', fontFamily: 'Georgia, serif', marginBottom: i < STORY.length - 1 ? 4 : 0 }}>{p}</p>
+              <p key={i} style={{ fontSize: 9, lineHeight: 1.65, color: '#5C4A3A', fontStyle: 'italic', fontFamily: 'Georgia, serif', marginBottom: i < STORY.length - 1 ? 5 : 0 }}>{p}</p>
             ))}
             <HeartSig />
           </div>
 
-          {/* Feature notecard — bottom right, overlaps photo 5 */}
-          <div style={{ position: 'absolute', right: 10, bottom: 14, width: 178, background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '11px 13px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', zIndex: 30, transform: 'rotate(-1.5deg)' }}>
+          {/* Photo 2 — Scotland, behind notecard slightly, row 1 */}
+          <div style={{ position: 'absolute', left: '24%', top: 6, zIndex: 2, background: 'white', padding: '6px 6px 22px', transform: 'rotate(2.5deg)', boxShadow: '0 2px 8px rgba(43,42,40,0.1)' }}>
+            {tapeTop()}
+            <img src="/photos/photo2.jpg" alt="Scotland" style={{ width: 155, height: 200, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', top: 8, right: 7, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>9 - 18 - 23<br />SCOTLAND</div>
+          </div>
+
+          {/* Photo 3 — beach, center, row 1 */}
+          <div style={{ position: 'absolute', left: '43%', top: 14, zIndex: 3, background: 'white', padding: '6px 6px 22px', transform: 'rotate(-2deg)', boxShadow: '0 2px 8px rgba(43,42,40,0.1)' }}>
+            {tapeTop()}
+            <img src="/photos/photo3.jpg" alt="first beach" style={{ width: 160, height: 205, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 25, right: 7, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>7 - 04 - 23</div>
+            <div style={{ position: 'absolute', bottom: 5, left: 0, right: 0, textAlign: 'center', fontSize: 8, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>first beach</div>
+          </div>
+
+          {/* Photo 4 — christmas, row 1 right */}
+          <div style={{ position: 'absolute', right: '4%', top: 8, zIndex: 3, background: 'white', padding: '6px 6px 22px', transform: 'rotate(-1.5deg)', boxShadow: '0 2px 8px rgba(43,42,40,0.1)' }}>
+            {tapeTop()}
+            <img src="/photos/photo5.jpg" alt="first christmas" style={{ width: 155, height: 200, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 25, left: 7, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>12 - 25 - 23<br />Kennett Square, PA</div>
+            <div style={{ position: 'absolute', bottom: 5, left: 0, right: 0, textAlign: 'center', fontSize: 8, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>first christmas</div>
+          </div>
+
+          {/* Photo 5 — bottom row left */}
+          <div style={{ position: 'absolute', left: '3%', top: 255, zIndex: 4, background: 'white', padding: '6px 6px 22px', transform: 'rotate(3deg)', boxShadow: '0 2px 8px rgba(43,42,40,0.1)' }}>
+            <div style={{ position: 'absolute', width: 16, height: 16, background: 'rgba(255,235,170,0.78)', border: '0.5px solid rgba(200,165,80,0.3)', borderRadius: 1, top: -3, left: -3, transform: 'rotate(-12deg)' }} />
+            <div style={{ position: 'absolute', width: 16, height: 16, background: 'rgba(255,235,170,0.78)', border: '0.5px solid rgba(200,165,80,0.3)', borderRadius: 1, top: -3, right: -3, transform: 'rotate(12deg)' }} />
+            <img src="/photos/photo4.jpg" alt="memory" style={{ width: 150, height: 185, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 25, right: 7, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>11 - 30 - 24</div>
+          </div>
+
+          {/* Photo 6 — bottom row center */}
+          <div style={{ position: 'absolute', left: '23%', top: 265, zIndex: 3, background: 'white', padding: '6px 6px 22px', transform: 'rotate(-2deg)', boxShadow: '0 2px 8px rgba(43,42,40,0.1)' }}>
+            {tapeTop(30)}
+            <img src="/photos/photo3.jpg" alt="spring" style={{ width: 148, height: 178, objectFit: 'cover', display: 'block', filter: 'sepia(0.15)' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 25, right: 7, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>4 - 02 - 24</div>
+          </div>
+
+          {/* Feature notecard — bottom right */}
+          <div style={{ position: 'absolute', right: 12, bottom: 14, width: 185, background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '12px 14px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', zIndex: 25, transform: 'rotate(-1.5deg)' }}>
             <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, left: -3, transform: 'rotate(-15deg)' }} />
             <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, right: -3, transform: 'rotate(15deg)' }} />
             <p style={{ fontSize: 8.5, color: '#2B2A28', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1.5, marginBottom: 6 }}>
@@ -113,7 +121,7 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div style={{ position: 'absolute', right: 205, bottom: 16, fontFamily: 'Courier New, monospace', fontSize: 9, color: '#8A6F5A', fontStyle: 'italic', transform: 'rotate(2deg)', zIndex: 10 }}>2022 - 2024</div>
+          <div style={{ position: 'absolute', right: 210, bottom: 16, fontFamily: 'Courier New, monospace', fontSize: 9, color: '#8A6F5A', fontStyle: 'italic', transform: 'rotate(2deg)', zIndex: 10 }}>2022 - 2024</div>
         </div>
       )}
 
@@ -130,7 +138,13 @@ export default function HomePage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '16px 16px 8px', scrollbarWidth: 'none' }}>
-            {PHOTOS.map((p, i) => (
+            {[
+              { src: '/photos/photo1.jpg', stamp: '8 - 14 - 22', cap: null, loc: null, rot: -4 },
+              { src: '/photos/photo2.jpg', stamp: '9 - 18 - 23', cap: null, loc: 'SCOTLAND', rot: 2.5 },
+              { src: '/photos/photo3.jpg', stamp: '7 - 04 - 23', cap: 'first beach', loc: null, rot: -2 },
+              { src: '/photos/photo4.jpg', stamp: '11 - 30 - 24', cap: null, loc: null, rot: 3 },
+              { src: '/photos/photo5.jpg', stamp: '12 - 25 - 23', cap: 'first christmas', loc: 'Kennett Square, PA', rot: -1.5 },
+            ].map((p, i) => (
               <div key={i} style={{ background: 'white', padding: '5px 5px 20px', transform: `rotate(${p.rot}deg)`, boxShadow: '0 2px 8px rgba(43,42,40,0.1)', position: 'relative', flexShrink: 0, width: 145 }}>
                 <div style={{ position: 'absolute', width: 34, height: 10, background: 'rgba(255,235,170,0.75)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
                 <img src={p.src} alt={p.cap ?? 'memory'} style={{ width: 135, height: 175, objectFit: 'cover', display: 'block' }} loading="eager" />
