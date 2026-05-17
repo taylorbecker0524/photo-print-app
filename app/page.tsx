@@ -9,6 +9,15 @@ const STORY = [
   'that\'s why archive exists."'
 ]
 
+const PHOTOS = [
+  { src: '/photos/photo1.jpg', stamp: '8 - 14 - 22', cap: null, loc: null, rot: -3.5, stampPos: 'br' },
+  { src: '/photos/photo2.jpg', stamp: '9 - 18 - 23', cap: null, loc: 'SCOTLAND', rot: 2.5, stampPos: 'tr' },
+  { src: '/photos/photo3.jpg', stamp: '7 - 04 - 23', cap: 'first beach', loc: null, rot: -2, stampPos: 'br' },
+  { src: '/photos/photo4.jpg', stamp: '11 - 30 - 24', cap: null, loc: null, rot: 3, stampPos: 'br' },
+  { src: '/photos/photo5.jpg', stamp: '12 - 25 - 23', cap: 'first christmas', loc: 'Kennett Square, PA', rot: -1.5, stampPos: 'bl' },
+  { src: '/photos/photo6.jpg', stamp: '7 - 12 - 24', cap: null, loc: 'Chesapeake Bay, MD', rot: 2, stampPos: 'br' },
+]
+
 export default function HomePage() {
   const router = useRouter()
   const [isMobile, setIsMobile] = useState(false)
@@ -27,11 +36,7 @@ export default function HomePage() {
     </div>
   )
 
-  const tapeTop = () => <div style={{ position: 'absolute', width: 36, height: 10, background: 'rgba(255,235,170,0.78)', border: '0.5px solid rgba(200,165,80,0.3)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
-  const cornerTape = () => (<>
-    <div style={{ position: 'absolute', width: 15, height: 15, background: 'rgba(255,235,170,0.78)', border: '0.5px solid rgba(200,165,80,0.3)', borderRadius: 1, top: -3, left: -3, transform: 'rotate(-12deg)' }} />
-    <div style={{ position: 'absolute', width: 15, height: 15, background: 'rgba(255,235,170,0.78)', border: '0.5px solid rgba(200,165,80,0.3)', borderRadius: 1, top: -3, right: -3, transform: 'rotate(12deg)' }} />
-  </>)
+  const TapeTop = () => <div style={{ position: 'absolute', width: 42, height: 12, background: 'rgba(255,235,170,0.78)', border: '0.5px solid rgba(200,165,80,0.3)', borderRadius: 1, top: -6, left: '50%', transform: 'translateX(-50%)' }} />
 
   return (
     <div style={{ width: '100%', overflowX: 'hidden' }}>
@@ -54,74 +59,76 @@ export default function HomePage() {
         ))}
       </div>
 
-      {/* DESKTOP scrapbook */}
+      {/* DESKTOP — single horizontal row */}
       {!isMobile && (
-        <div style={{ position: 'relative', height: 460, background: '#EDE6DC', overflow: 'hidden', width: '100%' }}>
+        <div style={{ background: '#EDE6DC', width: '100%', padding: '32px 0 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0, overflowX: 'hidden' }}>
 
-          {/* TOP ROW */}
-
-          {/* Photo 1 — baby, far left partially cut */}
-          <div style={{ position: 'absolute', left: -10, top: 10, zIndex: 3, background: 'white', padding: '6px 6px 22px', transform: 'rotate(-4deg)', boxShadow: '0 2px 8px rgba(43,42,40,0.1)' }}>
-            {tapeTop()}
-            <img src="/photos/photo1.jpg" alt="memory" style={{ width: 155, height: 200, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', bottom: 25, right: 7, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>8 - 14 - 22</div>
+          {/* Photo 1 */}
+          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-3.5deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: '1%' }}>
+            <TapeTop />
+            <img src="/photos/photo1.jpg" alt="memory" style={{ width: 160, height: 210, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>8 - 14 - 22</div>
           </div>
 
-          {/* Story notecard — overlaps photo 1 */}
-          <div style={{ position: 'absolute', left: 130, top: 10, width: 205, background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '13px 15px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', zIndex: 20, transform: 'rotate(1deg)' }}>
+          {/* Story notecard */}
+          <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '13px 15px', boxShadow: '0 2px 8px rgba(43,42,40,0.08)', position: 'relative', flexShrink: 0, width: 185, transform: 'rotate(1.5deg)', alignSelf: 'center' }}>
             <div style={{ position: 'absolute', width: 34, height: 10, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
             {STORY.map((p, i) => (
-              <p key={i} style={{ fontSize: 9, lineHeight: 1.65, color: '#5C4A3A', fontStyle: 'italic', fontFamily: 'Georgia, serif', marginBottom: i < STORY.length - 1 ? 5 : 0 }}>{p}</p>
+              <p key={i} style={{ fontSize: 8.5, lineHeight: 1.65, color: '#5C4A3A', fontStyle: 'italic', fontFamily: 'Georgia, serif', marginBottom: i < STORY.length - 1 ? 5 : 0 }}>{p}</p>
             ))}
             <HeartSig />
           </div>
 
-          {/* Photo 2 — Scotland, stamp top right */}
-          <div style={{ position: 'absolute', left: '26%', top: 6, zIndex: 2, background: 'white', padding: '6px 6px 22px', transform: 'rotate(2.5deg)', boxShadow: '0 2px 8px rgba(43,42,40,0.1)' }}>
-            {tapeTop()}
-            <img src="/photos/photo2.jpg" alt="Scotland" style={{ width: 158, height: 202, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', top: 8, right: 7, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>9 - 18 - 23<br />SCOTLAND</div>
+          {/* Photo 2 — Scotland */}
+          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(2.5deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0 }}>
+            <TapeTop />
+            <img src="/photos/photo2.jpg" alt="Scotland" style={{ width: 158, height: 206, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', top: 10, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>9 - 18 - 23<br />SCOTLAND</div>
           </div>
 
-          {/* Photo 3 — beach, center top */}
-          <div style={{ position: 'absolute', left: '50%', top: 14, zIndex: 3, background: 'white', padding: '6px 6px 22px', transform: 'rotate(-2deg)', boxShadow: '0 2px 8px rgba(43,42,40,0.1)' }}>
-            {tapeTop()}
-            <img src="/photos/photo3.jpg" alt="first beach" style={{ width: 160, height: 206, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', bottom: 25, right: 7, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>7 - 04 - 23</div>
-            <div style={{ position: 'absolute', bottom: 5, left: 0, right: 0, textAlign: 'center', fontSize: 8, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>first beach</div>
+          {/* Photo 3 — beach */}
+          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-2deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0 }}>
+            <TapeTop />
+            <img src="/photos/photo3.jpg" alt="first beach" style={{ width: 162, height: 212, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>7 - 04 - 23</div>
+            <div style={{ position: 'absolute', bottom: 7, left: 0, right: 0, textAlign: 'center', fontSize: 8.5, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>first beach</div>
           </div>
 
-          {/* BOTTOM ROW */}
-
-          {/* Photo 4 — dinner, bottom left */}
-          <div style={{ position: 'absolute', left: '3%', top: 258, zIndex: 4, background: 'white', padding: '6px 6px 22px', transform: 'rotate(3deg)', boxShadow: '0 2px 8px rgba(43,42,40,0.1)' }}>
-            {cornerTape()}
-            <img src="/photos/photo4.jpg" alt="memory" style={{ width: 152, height: 188, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', bottom: 25, right: 7, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>11 - 30 - 24</div>
+          {/* Photo 4 — dinner */}
+          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(3deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0 }}>
+            <TapeTop />
+            <img src="/photos/photo4.jpg" alt="memory" style={{ width: 155, height: 202, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>11 - 30 - 24</div>
           </div>
 
-          {/* Photo 5 — B&W christmas, bottom center-right */}
-          <div style={{ position: 'absolute', left: '26%', top: 265, zIndex: 3, background: 'white', padding: '6px 6px 22px', transform: 'rotate(-2deg)', boxShadow: '0 2px 8px rgba(43,42,40,0.1)' }}>
-            {tapeTop()}
-            <img src="/photos/photo5.jpg" alt="first christmas" style={{ width: 155, height: 192, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', bottom: 25, left: 7, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>12 - 25 - 23<br />Kennett Square, PA</div>
-            <div style={{ position: 'absolute', bottom: 5, left: 0, right: 0, textAlign: 'center', fontSize: 8, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>first christmas</div>
-          </div>
-
-          {/* Feature notecard — center bottom where arrow pointed */}
-          <div style={{ position: 'absolute', left: '50%', bottom: 16, width: 188, background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '12px 14px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', zIndex: 25, transform: 'rotate(1.5deg)' }}>
+          {/* Feature notecard */}
+          <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '13px 15px', boxShadow: '0 2px 8px rgba(43,42,40,0.08)', position: 'relative', flexShrink: 0, width: 182, transform: 'rotate(-1.5deg)', alignSelf: 'center' }}>
             <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, left: -3, transform: 'rotate(-15deg)' }} />
             <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, right: -3, transform: 'rotate(15deg)' }} />
             <p style={{ fontSize: 8.5, color: '#2B2A28', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1.5, marginBottom: 6 }}>
               Remember the date stamp on old disposable camera prints? <em style={{ color: '#D97A43' }}>We brought it back.</em>
             </p>
             <div style={{ fontFamily: 'Courier New, monospace', fontSize: 9, color: '#E8841A', fontWeight: 700, marginBottom: 6, letterSpacing: '0.07em' }}>5 - 13 - 25 - TAMPA, FL</div>
-            <p style={{ fontSize: 7.5, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
+            <p style={{ fontSize: 8, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
               Upload your photos, choose your stamp style, and we print and ship them to your door.
             </p>
           </div>
 
-          <div style={{ position: 'absolute', right: 20, bottom: 16, fontFamily: 'Courier New, monospace', fontSize: 9, color: '#8A6F5A', fontStyle: 'italic', transform: 'rotate(2deg)', zIndex: 10 }}>2022 - 2024</div>
+          {/* Photo 6 — dog at bay */}
+          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(2deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0 }}>
+            <TapeTop />
+            <img src="/photos/photo6.jpg" alt="Chesapeake Bay" style={{ width: 155, height: 204, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>7 - 12 - 24<br />Chesapeake Bay, MD</div>
+          </div>
+
+          {/* Photo 5 — B&W christmas */}
+          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-1.5deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginRight: '1%' }}>
+            <TapeTop />
+            <img src="/photos/photo5.jpg" alt="first christmas" style={{ width: 158, height: 206, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 28, left: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>12 - 25 - 23<br />Kennett Square, PA</div>
+            <div style={{ position: 'absolute', bottom: 7, left: 0, right: 0, textAlign: 'center', fontSize: 8.5, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>first christmas</div>
+          </div>
+
         </div>
       )}
 
@@ -138,13 +145,7 @@ export default function HomePage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '16px 16px 8px', scrollbarWidth: 'none' }}>
-            {[
-              { src: '/photos/photo1.jpg', stamp: '8 - 14 - 22', cap: null, loc: null, rot: -4, stampPos: 'br' },
-              { src: '/photos/photo2.jpg', stamp: '9 - 18 - 23', cap: null, loc: 'SCOTLAND', rot: 2.5, stampPos: 'tr' },
-              { src: '/photos/photo3.jpg', stamp: '7 - 04 - 23', cap: 'first beach', loc: null, rot: -2, stampPos: 'br' },
-              { src: '/photos/photo4.jpg', stamp: '11 - 30 - 24', cap: null, loc: null, rot: 3, stampPos: 'br' },
-              { src: '/photos/photo5.jpg', stamp: '12 - 25 - 23', cap: 'first christmas', loc: 'Kennett Square, PA', rot: -1.5, stampPos: 'bl' },
-            ].map((p, i) => (
+            {PHOTOS.map((p, i) => (
               <div key={i} style={{ background: 'white', padding: '5px 5px 20px', transform: `rotate(${p.rot}deg)`, boxShadow: '0 2px 8px rgba(43,42,40,0.1)', position: 'relative', flexShrink: 0, width: 145 }}>
                 <div style={{ position: 'absolute', width: 34, height: 10, background: 'rgba(255,235,170,0.75)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
                 <img src={p.src} alt={p.cap ?? 'memory'} style={{ width: 135, height: 175, objectFit: 'cover', display: 'block' }} loading="eager" />
