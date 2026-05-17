@@ -37,61 +37,32 @@ const getPrice = (size: string, qty: number) => {
   return +(base * tier.mult).toFixed(2)
 }
 const fmtSession = (d: Date) => d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+const fmtDate = (iso: string, fmt: 'modern'|'classic' = 'classic') => { const d = new Date(iso); return fmt === 'classic' ? `${String(d.getDate()).padStart(2,'0')} ${String(d.getMonth()+1).padStart(2,'0')} ${d.getFullYear()}` : d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) }
 
 async function readExif(file: File): Promise<{ date: string | null; lat: number | null; lon: number | null }> {
-  return new Promise(resolve => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
+  try {
+    const exifr = await import('https://cdn.jsdelivr.net/npm/exifr/dist/full.esm.js' as any)
+    const result = await exifr.parse(file, { gps: true, tiff: true, exif: true })
+    if (!result) return { date: null, lat: null, lon: null }
+    let date: string | null = null
+    const raw = result.DateTimeOriginal || result.DateTime || result.CreateDate
+    if (raw) {
       try {
-        const buf = e.target?.result as ArrayBuffer
-        const view = new DataView(buf)
-        if (view.getUint16(0) !== 0xFFD8) { resolve({ date: null, lat: null, lon: null }); return }
-        const arr = new Uint8Array(buf)
-        const len = Math.min(arr.length, 65536)
-        let date: string | null = null, lat: number | null = null, lon: number | null = null
-        for (let i = 0; i < len - 19; i++) {
-          if (arr[i] >= 49 && arr[i] <= 50 && arr[i+4]===58 && arr[i+7]===58 && arr[i+10]===32 && arr[i+13]===58 && arr[i+16]===58) {
-            const raw = Array.from(arr.slice(i,i+19)).map(c=>String.fromCharCode(c)).join('')
-            try { const [dp,tp]=raw.split(' '); const [y,m,d]=dp.split(':'); date=new Date(`${y}-${m}-${d}T${tp}`).toISOString(); break } catch { break }
-          }
+        if (raw instanceof Date) date = raw.toISOString()
+        else {
+          const s = String(raw)
+          const [dp, tp] = s.split(' ')
+          const [y, m, d] = dp.split(':')
+          date = new Date(`${y}-${m}-${d}T${tp||'12:00:00'}`).toISOString()
         }
-        let offset = 2
-        while (offset < view.byteLength - 4) {
-          const marker = view.getUint16(offset)
-          if (marker === 0xFFE1) {
-            if (view.getUint32(offset+4) === 0x45786966) {
-              const ts = offset+10, isLE = view.getUint16(ts) === 0x4949
-              const r16 = (o: number) => isLE ? view.getUint16(ts+o,true) : view.getUint16(ts+o)
-              const r32 = (o: number) => isLE ? view.getUint32(ts+o,true) : view.getUint32(ts+o)
-              const ifd0=r32(4), cnt=r16(ifd0)
-              let gpsOff=0
-              for (let e=0;e<cnt;e++){const eo=ifd0+2+e*12;if(r16(eo)===0x8825){gpsOff=r32(eo+8);break}}
-              if (gpsOff>0){
-                const gc=r16(gpsOff), gd: Record<number,number[]>={}
-                for(let g=0;g<gc&&g<30;g++){
-                  const go=gpsOff+2+g*12,tag=r16(go),type=r16(go+2),count=r32(go+4),vo=r32(go+8)
-                  if((tag===1||tag===3)&&type===2) gd[tag]=[arr[ts+go+8]]
-                  else if((tag===2||tag===4)&&type===5&&count===3){
-                    const rats: number[]=[]
-                    for(let r=0;r<3;r++){const ro=ts+vo+r*8;const n=r32(ro),dn=r32(ro+4);rats.push(dn?n/dn:0)}
-                    gd[tag]=rats
-                  }
-                }
-                if(gd[2]?.length===3){const[d,m,s]=gd[2];lat=d+m/60+s/3600;if(gd[1]&&String.fromCharCode(gd[1][0])==='S')lat=-lat}
-                if(gd[4]?.length===3){const[d,m,s]=gd[4];lon=d+m/60+s/3600;if(gd[3]&&String.fromCharCode(gd[3][0])==='W')lon=-lon}
-              }
-            }
-            break
-          }
-          if(offset+2>=view.byteLength) break
-          offset+=2+view.getUint16(offset+2)
-        }
-        resolve({date,lat,lon})
-      } catch { resolve({date:null,lat:null,lon:null}) }
+      } catch {}
     }
-    reader.readAsArrayBuffer(file.slice(0,65536))
-  })
+    const lat = result.latitude ?? result.GPSLatitude ?? null
+    const lon = result.longitude ?? result.GPSLongitude ?? null
+    return { date, lat, lon }
+  } catch {
+    return { date: null, lat: null, lon: null }
+  }
 }
 
 async function reverseGeocode(lat: number, lon: number): Promise<string> {
@@ -106,7 +77,7 @@ async function reverseGeocode(lat: number, lon: number): Promise<string> {
 
 const DEFAULT_STAMP: StampConfig = {
   showDate:false,showTime:false,showLocation:false,locationText:'',customText:'',
-  style:'burn',position:'bl',capturedAt:null,hasExifDate:false,hasExifLocation:false
+  style:'burn',position:'bl',capturedAt:null,hasExifDate:false,hasExifLocation:false,dateFormat:'classic'
 }
 
 const C = {
@@ -128,7 +99,7 @@ function Toggle({checked,onChange}:{checked:boolean;onChange:()=>void}){
 
 function StampBullets({stamp,filter}:{stamp:StampConfig;filter:Filter}){
   const items=[]
-  if(stamp.showDate&&stamp.capturedAt) items.push(fmtDate(stamp.capturedAt))
+  if(stamp.showDate&&stamp.capturedAt) items.push(fmtDate(stamp.capturedAt,stamp.dateFormat??'classic'))
   if(stamp.showTime&&stamp.capturedAt) items.push(new Date(stamp.capturedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}))
   if(stamp.showLocation&&stamp.locationText) items.push(stamp.locationText)
   if(stamp.customText) items.push(stamp.customText)
@@ -230,7 +201,7 @@ export default function StudioPage(){
     const{stamp}=previewPhoto
     if(stamp.style==='none'||stamp.style==='back') return
     const lines:string[]=[]
-    if(stamp.showDate&&stamp.capturedAt){const d=new Date(stamp.capturedAt);lines.push(d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}));if(stamp.showTime)lines.push(d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}))}
+    if(stamp.showDate&&stamp.capturedAt){const d=new Date(stamp.capturedAt);const fmt=previewPhoto.stamp.dateFormat??'classic';lines.push(fmt==='classic'?`${String(d.getDate()).padStart(2,'0')} ${String(d.getMonth()+1).padStart(2,'0')} ${d.getFullYear()}`:d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}));if(stamp.showTime)lines.push(d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}))}
     if(stamp.showLocation&&stamp.locationText) lines.push(stamp.locationText)
     if(stamp.customText) lines.push(stamp.customText)
     if(!lines.length) return
@@ -248,7 +219,7 @@ export default function StudioPage(){
   const updatePhoto=(id:string,u:Partial<Photo>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,...u}:p));setAddedState(false)}
   const updateStamp=(id:string,u:Partial<StampConfig>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,stamp:{...p.stamp,...u}}:p));setAddedState(false)}
   const detectLocation=useCallback(()=>{navigator.geolocation?.getCurrentPosition(async pos=>{const loc=await reverseGeocode(pos.coords.latitude,pos.coords.longitude);if(loc&&activePhotoId)updateStamp(activePhotoId,{locationText:loc,showLocation:true})})},[activePhotoId])
-  const applyBulk=()=>setPhotos(prev=>prev.map(p=>selectedIds.has(p.id)?{...p,filter:bulkFilter,stamp:{...p.stamp,style:bulkStyle}}:p))
+  const applyBulk=()=>{setPhotos(prev=>prev.map(p=>selectedIds.has(p.id)?{...p,filter:bulkFilter,stamp:{...p.stamp,style:bulkStyle}}:p));setSelectedIds(new Set())}
   const toggleSelect=(id:string)=>{setSelectedIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);setPreviewIndex(0);return n});if(!activePhotoId)setActivePhotoId(id);setAddedState(false)}
 
   const addToOrder=(photo:Photo)=>{
@@ -303,9 +274,9 @@ export default function StudioPage(){
       )}
 
       {/* Instructions */}
-      <div style={{background:'#2B2A28',borderRadius:10,padding:'10px 16px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'nowrap'}}>
+      <div style={{background:'#EFE8DF',borderRadius:10,padding:'10px 16px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'nowrap',border:'1px solid rgba(43,42,40,0.12)'}}>
         {[{icon:'📷',label:'Customize'},{icon:'🔖',label:'Stamp'},{icon:'🛒',label:'Add to order'},{icon:'✅',label:'Checkout'}].map((s,i)=>(
-          <span key={i} style={{fontFamily:'Courier New, monospace',fontSize:isMobile?10:11,color:'rgba(247,243,238,0.85)',letterSpacing:'0.03em',display:'flex',alignItems:'center',gap:4,whiteSpace:'nowrap'}}>
+          <span key={i} style={{fontFamily:'Courier New, monospace',fontSize:isMobile?10:11,color:'#2B2A28',letterSpacing:'0.03em',display:'flex',alignItems:'center',gap:4,whiteSpace:'nowrap'}}>
             <span>{s.icon}</span><span>{s.label}</span>
           </span>
         ))}
@@ -489,23 +460,33 @@ export default function StudioPage(){
                 <div style={C.card}>
                   <div style={C.head}><span style={C.mono}>Timestamp</span></div>
                   <div style={{padding:'8px 16px 14px'}}>
-                    <div style={C.togRow}>
-                      <div style={{flex:1,marginRight:12}}>
-                        <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Date</p>
-                        {activePhoto.stamp.capturedAt?(
+                    {/* DATE */}
+                    {activePhoto.stamp.capturedAt ? (
+                      <div style={C.togRow}>
+                        <div style={{flex:1,marginRight:12}}>
+                          <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Date</p>
                           <input type="date" defaultValue={activePhoto.stamp.capturedAt.slice(0,10)}
                             onChange={e=>{if(e.target.value){const dt=new Date(activePhoto.stamp.capturedAt!);const[y,m,d]=e.target.value.split('-');dt.setFullYear(+y,+m-1,+d);updateStamp(activePhoto.id,{capturedAt:dt.toISOString(),hasExifDate:true})}}}
                             style={{...C.input,fontSize:13,padding:'8px 10px'}}/>
-                        ):(
-                          <div>
-                            <p style={{fontSize:12,color:'#D97A43',marginBottom:6}}>No date found - add one:</p>
-                            <input type="date" onChange={e=>{if(e.target.value){const[y,m,d]=e.target.value.split('-');const dt=new Date(+y,+m-1,+d,12);updateStamp(activePhoto.id,{capturedAt:dt.toISOString(),hasExifDate:true,showDate:true})}}}
-                              style={{...C.input,fontSize:13,padding:'8px 10px'}}/>
+                          <div style={{display:'flex',gap:6,marginTop:6}}>
+                            {(['classic','modern'] as const).map(fmt=>(
+                              <button key={fmt} onClick={()=>updateStamp(activePhoto.id,{dateFormat:fmt})}
+                                style={{flex:1,padding:'5px 8px',fontSize:10,fontFamily:'Courier New, monospace',border:`1px solid ${(activePhoto.stamp.dateFormat??'classic')===fmt?'#D97A43':'rgba(43,42,40,0.15)'}`,borderRadius:6,background:(activePhoto.stamp.dateFormat??'classic')===fmt?'#F2D5C0':'#F7F3EE',cursor:'pointer',color:(activePhoto.stamp.dateFormat??'classic')===fmt?'#8A3A10':'#8A6F5A'}}>
+                                {fmt==='classic'?'17 05 2026':'May 17, 2026'}
+                              </button>
+                            ))}
                           </div>
-                        )}
+                        </div>
+                        <Toggle checked={activePhoto.stamp.showDate} onChange={()=>updateStamp(activePhoto.id,{showDate:!activePhoto.stamp.showDate})}/>
                       </div>
-                      <Toggle checked={activePhoto.stamp.showDate&&!!activePhoto.stamp.capturedAt} onChange={()=>updateStamp(activePhoto.id,{showDate:!activePhoto.stamp.showDate})}/>
-                    </div>
+                    ) : (
+                      <div style={{padding:'10px 0',borderBottom:'0.5px solid rgba(43,42,40,0.06)'}}>
+                        <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Date</p>
+                        <p style={{fontSize:11,color:'#D97A43',marginBottom:6}}>No date found in this photo - add one:</p>
+                        <input type="date" onChange={e=>{if(e.target.value){const[y,m,d]=e.target.value.split('-');const dt=new Date(+y,+m-1,+d,12);updateStamp(activePhoto.id,{capturedAt:dt.toISOString(),hasExifDate:true,showDate:true})}}}
+                          style={{...C.input,fontSize:13,padding:'8px 10px'}}/>
+                      </div>
+                    )}
                     <div style={C.togRow}>
                       <div style={{flex:1,marginRight:12}}>
                         <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Time</p>
