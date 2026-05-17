@@ -41,7 +41,7 @@ const fmtDate = (iso: string, fmt: 'modern'|'classic' = 'classic') => { const d 
 
 async function readExif(file: File): Promise<{ date: string | null; lat: number | null; lon: number | null }> {
   try {
-    const exifr = await import('https://cdn.jsdelivr.net/npm/exifr/dist/full.esm.js' as any)
+    const exifr = (await import('exifr')).default
     const result = await exifr.parse(file, { gps: true, tiff: true, exif: true })
     if (!result) return { date: null, lat: null, lon: null }
     let date: string | null = null
