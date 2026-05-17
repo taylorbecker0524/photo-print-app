@@ -87,7 +87,7 @@ const C = {
   mono:{fontFamily:'Courier New, monospace',fontSize:10,letterSpacing:'0.1em',textTransform:'uppercase' as const,color:'#8A6F5A'},
   input:{width:'100%',padding:'10px 12px',fontSize:14,border:'1px solid rgba(43,42,40,0.15)',borderRadius:8,background:'#F7F3EE',color:'#2B2A28',fontFamily:'inherit',outline:'none'} as React.CSSProperties,
   select:{width:'100%',padding:'10px 12px',fontSize:14,border:'1px solid rgba(43,42,40,0.15)',borderRadius:8,background:'#F7F3EE',color:'#2B2A28',fontFamily:'inherit',outline:'none',appearance:'none' as const} as React.CSSProperties,
-  togRow:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 0',borderBottom:'0.5px solid rgba(43,42,40,0.06)'} as React.CSSProperties,
+  togRow:{display:'flex',alignItems:'flex-start',justifyContent:'space-between',padding:'12px 0',borderBottom:'0.5px solid rgba(43,42,40,0.06)',gap:12} as React.CSSProperties,
   accent:{padding:'14px 20px',background:'#D97A43',color:'#F7F3EE',border:'none',borderRadius:10,fontSize:13,letterSpacing:'0.08em',textTransform:'uppercase' as const,fontFamily:'inherit',cursor:'pointer',width:'100%'} as React.CSSProperties,
   ghost:{padding:'8px 14px',background:'transparent',color:'#2B2A28',border:'1px solid rgba(43,42,40,0.2)',borderRadius:8,fontSize:11,letterSpacing:'0.06em',textTransform:'uppercase' as const,fontFamily:'inherit',cursor:'pointer'} as React.CSSProperties,
 }
@@ -220,7 +220,7 @@ export default function StudioPage(){
   const updatePhoto=(id:string,u:Partial<Photo>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,...u}:p));setAddedState(false)}
   const updateStamp=(id:string,u:Partial<StampConfig>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,stamp:{...p.stamp,...u}}:p));setAddedState(false)}
   const detectLocation=useCallback(()=>{navigator.geolocation?.getCurrentPosition(async pos=>{const loc=await reverseGeocode(pos.coords.latitude,pos.coords.longitude);if(loc&&activePhotoId)updateStamp(activePhotoId,{locationText:loc,showLocation:true})})},[activePhotoId])
-  const applyBulk=()=>{setPhotos(prev=>prev.map(p=>selectedIds.has(p.id)?{...p,filter:bulkFilter,stamp:{...p.stamp,style:bulkStyle}}:p));setSelectedIds(new Set())}
+  const applyBulk=()=>{const ids=new Set(selectedIds);setPhotos(prev=>prev.map(p=>ids.has(p.id)?{...p,filter:bulkFilter,stamp:{...p.stamp,style:bulkStyle}}:p));setSelectedIds(new Set())}
   const toggleSelect=(id:string)=>{setSelectedIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);setPreviewIndex(0);return n});if(!activePhotoId)setActivePhotoId(id);setAddedState(false)}
 
   const addToOrder=(photo:Photo)=>{
@@ -240,7 +240,7 @@ export default function StudioPage(){
     <div style={{maxWidth:680,margin:'0 auto',padding:'40px 20px'}}>
       <h1 style={{fontFamily:'Georgia, serif',fontSize:32,fontWeight:400,color:'#2B2A28',marginBottom:6,textAlign:'center'}}>Upload your photos</h1>
       <p style={{textAlign:'center',fontSize:14,color:'#8A6F5A',marginBottom:8}}>Drop as many as you like - choose which ones to print after</p>
-      <p style={{textAlign:'center',fontSize:12,color:'#C4B5A5',marginBottom:20,fontFamily:'Courier New, monospace'}}>We will automatically read the date and location from your photos</p>
+      <p style={{textAlign:'center',fontSize:12,color:'#8A6F5A',marginBottom:20,fontFamily:'Courier New, monospace'}}>We will automatically read the date and location from your photos</p>
       <div style={{background:'#EFE8DF',borderRadius:10,padding:'14px 16px',marginBottom:24,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
         <p style={{fontSize:13,color:'#8A6F5A',fontStyle:'italic'}}>Create a free archive to save your photos and easily track orders</p>
         <a href="/login" style={{fontFamily:'Courier New, monospace',fontSize:10,color:'#D97A43',textDecoration:'none',letterSpacing:'0.06em',textTransform:'uppercase',whiteSpace:'nowrap'}}>Sign in</a>
