@@ -3,10 +3,10 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 const PHOTOS = [
-  { src: '/photos/photo1.jpg', stamp: '8 - 14 - 22', cap: null,             loc: null,                rot: -4,   stampPos: 'br' },
-  { src: '/photos/photo2.jpg', stamp: '9 - 18 - 23', cap: null,             loc: 'SCOTLAND',          rot: 2.5,  stampPos: 'tr' },
-  { src: '/photos/photo3.jpg', stamp: '7 - 04 - 23', cap: 'first beach',    loc: null,                rot: -2,   stampPos: 'br' },
-  { src: '/photos/photo4.jpg', stamp: '11 - 30 - 24', cap: null,            loc: null,                rot: 3,    stampPos: 'br' },
+  { src: '/photos/photo1.jpg', stamp: '8 - 14 - 22', cap: null,               loc: null,                 rot: -4,   stampPos: 'br' },
+  { src: '/photos/photo2.jpg', stamp: '9 - 18 - 23', cap: null,               loc: 'SCOTLAND',           rot: 2.5,  stampPos: 'tr' },
+  { src: '/photos/photo3.jpg', stamp: '7 - 04 - 23', cap: 'first beach',      loc: null,                 rot: -2,   stampPos: 'br' },
+  { src: '/photos/photo4.jpg', stamp: '11 - 30 - 24', cap: null,              loc: null,                 rot: 3,    stampPos: 'br' },
   { src: '/photos/photo5.jpg', stamp: '12 - 25 - 23', cap: 'first christmas', loc: 'Kennett Square, PA', rot: -1.5, stampPos: 'bl' },
 ]
 
@@ -28,9 +28,7 @@ export default function HomePage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  const NotecardTape = () => (
-    <div style={{ position: 'absolute', width: 34, height: 10, background: 'rgba(255,235,170,0.8)', border: '0.5px solid rgba(200,165,80,0.3)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
-  )
+  const tape = <div style={{ position: 'absolute', width: 36, height: 10, background: 'rgba(255,235,170,0.78)', border: '0.5px solid rgba(200,165,80,0.3)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
 
   const HeartSig = () => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8, fontFamily: 'Courier New, monospace', fontSize: 9, color: '#8A6F5A' }}>
@@ -39,67 +37,18 @@ export default function HomePage() {
     </div>
   )
 
-  const StoryNotecard = ({ mobile }: { mobile: boolean }) => (
-    <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: mobile ? '14px 16px' : '11px 13px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', position: 'relative', ...(mobile ? {} : { transform: 'rotate(1.5deg)', width: 178 }) }}>
-      <NotecardTape />
-      {STORY.map((p, i) => (
-        <p key={i} style={{ fontSize: mobile ? 12 : 8.5, lineHeight: 1.65, color: '#5C4A3A', fontStyle: 'italic', fontFamily: 'Georgia, serif', marginBottom: i < STORY.length - 1 ? (mobile ? 8 : 5) : 0 }}>{p}</p>
-      ))}
-      <HeartSig />
-    </div>
-  )
-
-  const FeatureNotecard = ({ mobile }: { mobile: boolean }) => (
-    <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: mobile ? '14px 16px' : '11px 13px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', position: 'relative', ...(mobile ? {} : { transform: 'rotate(-1.5deg)', width: 185 }) }}>
-      <div style={{ position: 'absolute', width: 14, height: 14, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, left: -3, transform: 'rotate(-15deg)' }} />
-      <div style={{ position: 'absolute', width: 14, height: 14, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, right: -3, transform: 'rotate(15deg)' }} />
-      <p style={{ fontSize: mobile ? 12 : 8.5, color: '#2B2A28', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1.5, marginBottom: mobile ? 8 : 6 }}>
-        Remember the date stamp on old disposable camera prints? <em style={{ color: '#D97A43' }}>We brought it back.</em>
-      </p>
-      <div style={{ fontFamily: 'Courier New, monospace', fontSize: mobile ? 11 : 9, color: '#E8841A', fontWeight: 700, marginBottom: mobile ? 8 : 6, letterSpacing: '0.07em' }}>5 - 13 - 25 - TAMPA, FL</div>
-      <p style={{ fontSize: mobile ? 11 : 8, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
-        Upload your photos, choose your stamp style, and we print and ship them to your door - with the exact date and location burned right onto the print.
-      </p>
-    </div>
-  )
-
-  const PhotoCard = ({ p, w, h }: { p: typeof PHOTOS[0]; w: number; h: number }) => {
-    const stampStyle: React.CSSProperties = {
-      position: 'absolute',
-      fontFamily: 'Courier New, monospace',
-      color: '#E8841A',
-      fontWeight: 700,
-      fontSize: 8,
-      lineHeight: 1.4,
-      letterSpacing: '0.06em',
-      textShadow: '0 0 3px rgba(232,132,26,0.4)',
-      ...(p.stampPos === 'tr' ? { top: 7, right: 6 } :
-          p.stampPos === 'tl' ? { top: 7, left: 6 } :
-          p.stampPos === 'bl' ? { bottom: 25, left: 6 } :
-          { bottom: 25, right: 6 })
-    }
-    return (
-      <div style={{ background: 'white', padding: '6px 6px 22px', transform: `rotate(${p.rot}deg)`, boxShadow: '0 2px 8px rgba(43,42,40,0.1)', position: 'relative' }}>
-        <div style={{ position: 'absolute', width: 36, height: 10, background: 'rgba(255,235,170,0.75)', border: '0.5px solid rgba(200,165,80,0.3)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
-        <img src={p.src} alt={p.cap ?? 'memory'} style={{ width: w, height: h, objectFit: 'cover', display: 'block' }} loading="eager" />
-        <div style={stampStyle}>{p.stamp}{p.loc && <><br />{p.loc}</>}</div>
-        {p.cap && <div style={{ position: 'absolute', bottom: 5, left: 0, right: 0, textAlign: 'center', fontSize: 8, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>{p.cap}</div>}
-      </div>
-    )
-  }
-
   return (
     <div style={{ width: '100%', overflowX: 'hidden' }}>
 
-      {/* How it works bar — full width */}
-      <div style={{ background: '#EFE8DF', borderBottom: '1px solid rgba(43,42,40,0.08)', padding: '10px 0', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-around' }}>
+      {/* How it works bar — full width, space-around */}
+      <div style={{ background: '#EFE8DF', borderBottom: '1px solid rgba(43,42,40,0.08)', padding: '10px 0', width: '100%', display: 'flex', alignItems: 'center' }}>
         {[
           { n: '1', title: 'Upload', sub: 'photos' },
           { n: '2', title: 'Stamp', sub: 'date + location' },
           { n: '3', title: 'Print', sub: 'any size' },
           { n: '4', title: 'Ship', sub: 'to your door' },
         ].map((step, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px', borderRight: i < 3 ? '1px solid rgba(43,42,40,0.1)' : 'none', flex: 1, justifyContent: 'center' }}>
+          <div key={i} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRight: i < 3 ? '1px solid rgba(43,42,40,0.1)' : 'none' }}>
             <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#F7F3EE', border: '1px solid rgba(43,42,40,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Courier New, monospace', fontSize: 9, color: '#8A6F5A', flexShrink: 0 }}>{step.n}</div>
             <div>
               <div style={{ fontFamily: 'Courier New, monospace', fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#2B2A28' }}>{step.title}</div>
@@ -109,42 +58,62 @@ export default function HomePage() {
         ))}
       </div>
 
-      {/* DESKTOP scrapbook */}
+      {/* DESKTOP scrapbook — photos evenly spread using percentage widths */}
       {!isMobile && (
-        <div style={{ position: 'relative', height: 460, background: '#EDE6DC', overflow: 'hidden', width: '100%' }}>
+        <div style={{ position: 'relative', height: 440, background: '#EDE6DC', overflow: 'hidden', width: '100%' }}>
 
-          {/* Row 1 photos — spread across full width using vw positioning */}
-          <div style={{ position: 'absolute', left: '1%', top: 12, zIndex: 3 }}>
-            <PhotoCard p={PHOTOS[0]} w={148} h={194} />
+          {/* 5 photos spread evenly across full width using percentages */}
+          {PHOTOS.map((p, i) => {
+            const lefts = ['1%', '20%', '39%', '58%', '77%']
+            const tops = [14, 6, 16, 8, 14]
+            const w = 140, h = 182
+            const stampStyle: React.CSSProperties = {
+              position: 'absolute',
+              fontFamily: 'Courier New, monospace',
+              color: '#E8841A',
+              fontWeight: 700,
+              fontSize: 7.5,
+              lineHeight: 1.4,
+              letterSpacing: '0.06em',
+              textShadow: '0 0 3px rgba(232,132,26,0.4)',
+              ...(p.stampPos === 'tr' ? { top: 8, right: 6 } :
+                  p.stampPos === 'tl' ? { top: 8, left: 6 } :
+                  p.stampPos === 'bl' ? { bottom: 25, left: 6 } :
+                  { bottom: 25, right: 6 })
+            }
+            return (
+              <div key={i} style={{ position: 'absolute', left: lefts[i], top: tops[i], zIndex: i + 1, background: 'white', padding: '5px 5px 20px', transform: `rotate(${p.rot}deg)`, boxShadow: '0 2px 8px rgba(43,42,40,0.1)' }}>
+                {tape}
+                <img src={p.src} alt={p.cap ?? 'memory'} style={{ width: w, height: h, objectFit: 'cover', display: 'block' }} loading="eager" />
+                <div style={stampStyle}>{p.stamp}{p.loc && <><br />{p.loc}</>}</div>
+                {p.cap && <div style={{ position: 'absolute', bottom: 4, left: 0, right: 0, textAlign: 'center', fontSize: 7.5, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>{p.cap}</div>}
+              </div>
+            )
+          })}
+
+          {/* Story notecard — overlaps photos 1 and 2, high z-index */}
+          <div style={{ position: 'absolute', left: 'calc(1% + 100px)', top: 20, width: 170, background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '11px 13px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', zIndex: 30, transform: 'rotate(1.5deg)' }}>
+            <div style={{ position: 'absolute', width: 32, height: 10, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
+            {STORY.map((p, i) => (
+              <p key={i} style={{ fontSize: 8, lineHeight: 1.65, color: '#5C4A3A', fontStyle: 'italic', fontFamily: 'Georgia, serif', marginBottom: i < STORY.length - 1 ? 4 : 0 }}>{p}</p>
+            ))}
+            <HeartSig />
           </div>
 
-          {/* Story notecard between photo 1 and 2 */}
-          <div style={{ position: 'absolute', left: 'calc(1% + 162px)', top: 14, zIndex: 20 }}>
-            <StoryNotecard mobile={false} />
+          {/* Feature notecard — bottom right, overlaps photo 5 */}
+          <div style={{ position: 'absolute', right: 10, bottom: 14, width: 178, background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '11px 13px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', zIndex: 30, transform: 'rotate(-1.5deg)' }}>
+            <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, left: -3, transform: 'rotate(-15deg)' }} />
+            <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, right: -3, transform: 'rotate(15deg)' }} />
+            <p style={{ fontSize: 8.5, color: '#2B2A28', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1.5, marginBottom: 6 }}>
+              Remember the date stamp on old disposable camera prints? <em style={{ color: '#D97A43' }}>We brought it back.</em>
+            </p>
+            <div style={{ fontFamily: 'Courier New, monospace', fontSize: 9, color: '#E8841A', fontWeight: 700, marginBottom: 6, letterSpacing: '0.07em' }}>5 - 13 - 25 - TAMPA, FL</div>
+            <p style={{ fontSize: 7.5, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
+              Upload your photos, choose your stamp style, and we print and ship them to your door.
+            </p>
           </div>
 
-          <div style={{ position: 'absolute', left: 'calc(1% + 162px + 192px)', top: 6, zIndex: 3 }}>
-            <PhotoCard p={PHOTOS[1]} w={145} h={188} />
-          </div>
-
-          <div style={{ position: 'absolute', left: 'calc(1% + 162px + 192px + 158px)', top: 14, zIndex: 3 }}>
-            <PhotoCard p={PHOTOS[2]} w={148} h={192} />
-          </div>
-
-          <div style={{ position: 'absolute', right: 'calc(1% + 162px)', top: 8, zIndex: 3 }}>
-            <PhotoCard p={PHOTOS[3]} w={142} h={185} />
-          </div>
-
-          <div style={{ position: 'absolute', right: '1%', top: 16, zIndex: 3 }}>
-            <PhotoCard p={PHOTOS[4]} w={148} h={192} />
-          </div>
-
-          {/* Feature notecard bottom right */}
-          <div style={{ position: 'absolute', right: 12, bottom: 16, zIndex: 20 }}>
-            <FeatureNotecard mobile={false} />
-          </div>
-
-          <div style={{ position: 'absolute', right: 210, bottom: 18, fontFamily: 'Courier New, monospace', fontSize: 9, color: '#8A6F5A', fontStyle: 'italic', transform: 'rotate(2deg)', zIndex: 10 }}>2022 - 2024</div>
+          <div style={{ position: 'absolute', right: 205, bottom: 16, fontFamily: 'Courier New, monospace', fontSize: 9, color: '#8A6F5A', fontStyle: 'italic', transform: 'rotate(2deg)', zIndex: 10 }}>2022 - 2024</div>
         </div>
       )}
 
@@ -152,14 +121,20 @@ export default function HomePage() {
       {isMobile && (
         <div style={{ background: '#EDE6DC', width: '100%', paddingBottom: 16 }}>
           <div style={{ padding: '16px 16px 0' }}>
-            <StoryNotecard mobile={true} />
+            <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '14px 16px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', position: 'relative' }}>
+              <div style={{ position: 'absolute', width: 34, height: 10, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
+              {STORY.map((p, i) => (
+                <p key={i} style={{ fontSize: 12, lineHeight: 1.65, color: '#5C4A3A', fontStyle: 'italic', fontFamily: 'Georgia, serif', marginBottom: i < STORY.length - 1 ? 8 : 0 }}>{p}</p>
+              ))}
+              <HeartSig />
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '16px 16px 8px', scrollbarWidth: 'none' }}>
             {PHOTOS.map((p, i) => (
               <div key={i} style={{ background: 'white', padding: '5px 5px 20px', transform: `rotate(${p.rot}deg)`, boxShadow: '0 2px 8px rgba(43,42,40,0.1)', position: 'relative', flexShrink: 0, width: 145 }}>
                 <div style={{ position: 'absolute', width: 34, height: 10, background: 'rgba(255,235,170,0.75)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
                 <img src={p.src} alt={p.cap ?? 'memory'} style={{ width: 135, height: 175, objectFit: 'cover', display: 'block' }} loading="eager" />
-                <div style={{ position: 'absolute', bottom: p.loc ? 23 : 22, right: 6, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 7.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>
+                <div style={{ position: 'absolute', bottom: p.loc ? 23 : 22, right: 6, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 7.5, lineHeight: 1.4, textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>
                   {p.stamp}{p.loc && <><br />{p.loc}</>}
                 </div>
                 {p.cap && <div style={{ position: 'absolute', bottom: 4, left: 0, right: 0, textAlign: 'center', fontSize: 7.5, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>{p.cap}</div>}
@@ -167,7 +142,17 @@ export default function HomePage() {
             ))}
           </div>
           <div style={{ padding: '8px 16px 0' }}>
-            <FeatureNotecard mobile={true} />
+            <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '14px 16px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', position: 'relative' }}>
+              <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, left: -3, transform: 'rotate(-15deg)' }} />
+              <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, right: -3, transform: 'rotate(15deg)' }} />
+              <p style={{ fontSize: 12, color: '#2B2A28', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1.5, marginBottom: 8 }}>
+                Remember the date stamp on old disposable camera prints? <em style={{ color: '#D97A43' }}>We brought it back.</em>
+              </p>
+              <div style={{ fontFamily: 'Courier New, monospace', fontSize: 11, color: '#E8841A', fontWeight: 700, marginBottom: 8, letterSpacing: '0.07em' }}>5 - 13 - 25 - TAMPA, FL</div>
+              <p style={{ fontSize: 11, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
+                Upload your photos, choose your stamp style, and we print and ship them to your door.
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -175,8 +160,7 @@ export default function HomePage() {
       {/* Hero */}
       <div style={{ background: '#F7F3EE', padding: isMobile ? '36px 20px 28px' : '44px 24px 36px', textAlign: 'center', borderTop: '1px solid rgba(43,42,40,0.07)', width: '100%' }}>
         <h1 style={{ fontFamily: 'Georgia, serif', fontSize: isMobile ? 'clamp(28px, 8vw, 38px)' : 'clamp(32px, 4vw, 52px)', fontWeight: 400, color: '#2B2A28', lineHeight: 1.08, marginBottom: 24 }}>
-          Every photo tells a story.<br />
-          <em style={{ color: '#8A6F5A' }}>Archive yours.</em>
+          Every photo tells a story.<br /><em style={{ color: '#8A6F5A' }}>Archive yours.</em>
         </h1>
         <button onClick={() => router.push('/studio')} style={{ padding: '15px 48px', background: '#2B2A28', color: '#F7F3EE', border: 'none', borderRadius: 6, fontSize: 12, letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'Courier New, monospace', cursor: 'pointer', width: isMobile ? '100%' : 'auto', maxWidth: 340 }}>
           Get started
