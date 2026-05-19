@@ -147,6 +147,7 @@ export default function StudioPage(){
   const previewPhoto=selectedPhotos.length>1?selectedPhotos[previewIndex]:activePhoto
   const totalQty=orderItems.reduce((s,i)=>s+i.quantity,0)
   const orderTotal=orderItems.reduce((s,i)=>s+getPrice(i.size,totalQty)*i.quantity,0)
+  const isMultiSelect = selectedIds.size > 1
 
   const processFiles=useCallback(async(files:FileList,sessionId:string)=>{
     const newPhotoIds:string[]=[]
@@ -220,8 +221,24 @@ export default function StudioPage(){
   const updatePhoto=(id:string,u:Partial<Photo>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,...u}:p));setAddedState(false)}
   const updateStamp=(id:string,u:Partial<StampConfig>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,stamp:{...p.stamp,...u}}:p));setAddedState(false)}
   const detectLocation=useCallback(()=>{navigator.geolocation?.getCurrentPosition(async pos=>{const loc=await reverseGeocode(pos.coords.latitude,pos.coords.longitude);if(loc&&activePhotoId)updateStamp(activePhotoId,{locationText:loc,showLocation:true})})},[activePhotoId])
-  const applyBulk=(filterVal: Filter, styleVal: StampStyle, ids: Set<string>)=>{setPhotos(prev=>prev.map(p=>ids.has(p.id)?{...p,filter:filterVal,stamp:{...p.stamp,style:styleVal}}:p));setSelectedIds(new Set())}
-  const toggleSelect=(id:string)=>{setSelectedIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);setPreviewIndex(0);return n});if(!activePhotoId)setActivePhotoId(id);setAddedState(false)}
+
+  // THE FIX: capture selectedIds snapshot at call time, apply to ALL of them
+  const applyBulkFilter=(f: Filter)=>{
+    const ids=Array.from(selectedIds)
+    setPhotos(prev=>prev.map(p=>ids.includes(p.id)?{...p,filter:f}:p))
+    setBulkFilter(f)
+  }
+  const applyBulkStyle=(s: StampStyle)=>{
+    const ids=Array.from(selectedIds)
+    setPhotos(prev=>prev.map(p=>ids.includes(p.id)?{...p,stamp:{...p.stamp,style:s}}:p))
+    setBulkStyle(s)
+  }
+
+  const toggleSelect=(id:string)=>{
+    setSelectedIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);setPreviewIndex(0);return n})
+    if(!activePhotoId) setActivePhotoId(id)
+    setAddedState(false)
+  }
 
   const addToOrder=(photo:Photo)=>{
     setOrderItems(prev=>{
@@ -259,8 +276,6 @@ export default function StudioPage(){
 
   return(
     <div style={{maxWidth:1100,margin:'0 auto',padding:'20px 16px 100px',width:'100%'}}>
-
-      {/* Session prompt modal */}
       {showSessionPrompt&&(
         <div style={{position:'fixed',inset:0,background:'rgba(43,42,40,0.5)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}}>
           <div style={{background:'#F7F3EE',borderRadius:16,padding:'28px 32px',maxWidth:400,width:'90%',textAlign:'center'}}>
@@ -274,7 +289,6 @@ export default function StudioPage(){
         </div>
       )}
 
-      {/* Instructions */}
       <div style={{background:'#EFE8DF',borderRadius:10,padding:'10px 16px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'nowrap',border:'1px solid rgba(43,42,40,0.12)'}}>
         {[{icon:'📷',label:'Customize'},{icon:'🔖',label:'Stamp'},{icon:'🛒',label:'Add to order'},{icon:'✅',label:'Checkout'}].map((s,i)=>(
           <span key={i} style={{fontFamily:'Courier New, monospace',fontSize:isMobile?10:11,color:'#2B2A28',letterSpacing:'0.03em',display:'flex',alignItems:'center',gap:4,whiteSpace:'nowrap'}}>
@@ -291,14 +305,18 @@ export default function StudioPage(){
         </div>
       </div>
 
-      {/* Bulk bar - mobile only */}
-      {selectedIds.size>0&&isMobile&&(
+      {/* Mobile bulk bar */}
+      {isMultiSelect&&isMobile&&(
         <div style={{background:'#2B2A28',borderRadius:10,padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
           <span style={{fontFamily:'Courier New, monospace',fontSize:11,color:'rgba(247,243,238,0.7)',whiteSpace:'nowrap'}}>{selectedIds.size} selected</span>
-          <select value={bulkFilter} onChange={e=>setBulkFilter(e.target.value as Filter)} style={{...C.select,width:'auto',padding:'6px 10px',fontSize:12,flex:1,minWidth:100}}>
-            {FILTERS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
-          </select>
-          <button onClick={()=>applyBulk(bulkFilter,bulkStyle,new Set(selectedIds))} style={{...C.accent,width:'auto',padding:'8px 16px',fontSize:11}}>Apply to {selectedIds.size}</button>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',flex:1}}>
+            {FILTERS.map(f=>(
+              <button key={f.key} onClick={()=>applyBulkFilter(f.key)}
+                style={{padding:'5px 10px',fontSize:11,fontFamily:'Courier New, monospace',border:`1px solid ${bulkFilter===f.key?'#D97A43':'rgba(255,255,255,0.2)'}`,borderRadius:6,background:bulkFilter===f.key?'#D97A43':'transparent',cursor:'pointer',color:'rgba(247,243,238,0.9)'}}>
+                {f.label}
+              </button>
+            ))}
+          </div>
           <button onClick={()=>setSelectedIds(new Set())} style={{background:'none',border:'none',color:'rgba(247,243,238,0.5)',cursor:'pointer',fontSize:18}}>x</button>
         </div>
       )}
@@ -349,7 +367,6 @@ export default function StudioPage(){
             )
           })}
 
-          {/* Preview */}
           {(activePhoto||selectedPhotos.length>0)&&(
             <div style={{marginTop:8,...C.card}}>
               <div style={C.head}>
@@ -370,7 +387,6 @@ export default function StudioPage(){
             </div>
           )}
 
-          {/* IN YOUR ORDER - horizontal scroll */}
           {orderItems.length>0&&(
             <div style={{marginTop:36}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
@@ -410,7 +426,6 @@ export default function StudioPage(){
                   </div>
                 ))}
               </div>
-
               <div style={{position:'sticky',bottom:16,marginTop:16,background:'#2B2A28',borderRadius:14,padding:'16px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',boxShadow:'0 8px 32px rgba(43,42,40,0.2)',zIndex:50,gap:12}}>
                 <div>
                   <p style={{fontFamily:'Courier New, monospace',fontSize:10,color:'rgba(247,243,238,0.55)',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:2}}>{totalQty} prints - $4.99 shipping</p>
@@ -426,45 +441,49 @@ export default function StudioPage(){
         {(activePhoto||selectedPhotos.length>0)&&(
           <div style={{display:'flex',flexDirection:'column',gap:12}}>
 
-            {/* Bulk apply on desktop when multiple selected */}
-            {selectedPhotos.length>1&&!isMobile&&(
-              <div style={{...C.card}}>
-                <div style={C.head}><span style={C.mono}>Apply to {selectedPhotos.length} selected</span></div>
-                <div style={{padding:'12px 16px',display:'flex',flexDirection:'column',gap:8}}>
-                  <select value={bulkFilter} onChange={e=>setBulkFilter(e.target.value as Filter)} style={C.select}>
-                    {FILTERS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
-                  </select>
-                  <select value={bulkStyle} onChange={e=>setBulkStyle(e.target.value as StampStyle)} style={C.select}>
-                    <option value="burn">Classic burn</option>
-                    <option value="overlay">Overlay</option>
-                    <option value="back">Back of photo</option>
-                    <option value="none">No stamp</option>
-                  </select>
-                  <button onClick={()=>applyBulk(bulkFilter,bulkStyle,new Set(selectedIds))} style={C.accent}>Apply to all selected</button>
+            {/* FILTER — always shows all 7, clicking applies to selected or single */}
+            <div style={C.card}>
+              <div style={C.head}>
+                <span style={C.mono}>{isMultiSelect?`Filter — ${selectedIds.size} selected`:'Filter'}</span>
+              </div>
+              <div style={{padding:'10px 12px',display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
+                {FILTERS.map(f=>{
+                  const isActive = isMultiSelect ? bulkFilter===f.key : activePhoto?.filter===f.key
+                  return (
+                    <button key={f.key} onClick={()=>isMultiSelect ? applyBulkFilter(f.key) : activePhoto && updatePhoto(activePhoto.id,{filter:f.key})}
+                      style={{padding:'8px 4px',fontSize:11,fontFamily:'Courier New, monospace',border:`1px solid ${isActive?'#D97A43':'rgba(43,42,40,0.15)'}`,borderRadius:7,background:isActive?'#F2D5C0':'#F7F3EE',cursor:'pointer',color:isActive?'#8A3A10':'#2B2A28',minHeight:36}}>
+                      {f.label}
+                    </button>
+                  )
+                })}
+              </div>
+              {isMultiSelect&&<p style={{fontSize:11,color:'#8A6F5A',fontStyle:'italic',padding:'0 12px 10px',textAlign:'center'}}>Tap a filter to apply to all {selectedIds.size} selected photos</p>}
+            </div>
+
+            {/* Stamp style bulk — only when multi select */}
+            {isMultiSelect&&!isMobile&&(
+              <div style={C.card}>
+                <div style={C.head}><span style={C.mono}>Stamp style — {selectedIds.size} selected</span></div>
+                <div style={{padding:'10px 12px',display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:6}}>
+                  {(['burn','overlay','back','none'] as StampStyle[]).map(s=>(
+                    <button key={s} onClick={()=>applyBulkStyle(s)}
+                      style={{padding:'8px',fontSize:11,fontFamily:'Courier New, monospace',border:`1px solid ${bulkStyle===s?'#D97A43':'rgba(43,42,40,0.15)'}`,borderRadius:7,background:bulkStyle===s?'#F2D5C0':'#F7F3EE',cursor:'pointer',color:bulkStyle===s?'#8A3A10':'#2B2A28',minHeight:36}}>
+                      {s==='burn'?'Classic burn':s==='overlay'?'Overlay':s==='back'?'Back of photo':'No stamp'}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* Individual editor - only shows when single photo active, not bulk select */}
-            {activePhoto&&selectedPhotos.length<=1&&(
+            {/* Individual editor - only when single photo */}
+            {activePhoto&&!isMultiSelect&&(
               <>
-                <div style={C.card}>
-                  <div style={C.head}><span style={C.mono}>Filter</span></div>
-                  <div style={{padding:'10px 12px',display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
-                    {FILTERS.map(f=>(
-                      <button key={f.key} onClick={()=>updatePhoto(activePhoto.id,{filter:f.key})}
-                        style={{padding:'8px 4px',fontSize:11,fontFamily:'Courier New, monospace',border:`1px solid ${activePhoto.filter===f.key?'#D97A43':'rgba(43,42,40,0.15)'}`,borderRadius:7,background:activePhoto.filter===f.key?'#F2D5C0':'#F7F3EE',cursor:'pointer',color:activePhoto.filter===f.key?'#8A3A10':'#2B2A28',minHeight:36}}>{f.label}</button>
-                    ))}
-                  </div>
-                </div>
-
                 <div style={C.card}>
                   <div style={C.head}><span style={C.mono}>Timestamp</span></div>
                   <div style={{padding:'8px 16px 14px'}}>
-                    {/* DATE */}
                     {activePhoto.stamp.capturedAt ? (
                       <div style={C.togRow}>
-                        <div style={{flex:1,marginRight:12}}>
+                        <div style={{flex:1}}>
                           <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Date</p>
                           <input type="date" defaultValue={activePhoto.stamp.capturedAt.slice(0,10)}
                             onChange={e=>{if(e.target.value){const dt=new Date(activePhoto.stamp.capturedAt!);const[y,m,d]=e.target.value.split('-');dt.setFullYear(+y,+m-1,+d);updateStamp(activePhoto.id,{capturedAt:dt.toISOString(),hasExifDate:true})}}}
@@ -483,13 +502,13 @@ export default function StudioPage(){
                     ) : (
                       <div style={{padding:'10px 0',borderBottom:'0.5px solid rgba(43,42,40,0.06)'}}>
                         <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Date</p>
-                        <p style={{fontSize:11,color:'#D97A43',marginBottom:6}}>No date found in this photo - add one:</p>
+                        <p style={{fontSize:11,color:'#D97A43',marginBottom:6}}>No date found - add one:</p>
                         <input type="date" onChange={e=>{if(e.target.value){const[y,m,d]=e.target.value.split('-');const dt=new Date(+y,+m-1,+d,12);updateStamp(activePhoto.id,{capturedAt:dt.toISOString(),hasExifDate:true,showDate:true})}}}
                           style={{...C.input,fontSize:13,padding:'8px 10px'}}/>
                       </div>
                     )}
                     <div style={C.togRow}>
-                      <div style={{flex:1,marginRight:12}}>
+                      <div style={{flex:1}}>
                         <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Time</p>
                         {activePhoto.stamp.capturedAt?(
                           <input type="time" defaultValue={activePhoto.stamp.capturedAt.slice(11,16)}
@@ -502,7 +521,7 @@ export default function StudioPage(){
                       <Toggle checked={activePhoto.stamp.showTime&&!!activePhoto.stamp.capturedAt} onChange={()=>updateStamp(activePhoto.id,{showTime:!activePhoto.stamp.showTime})}/>
                     </div>
                     <div style={C.togRow}>
-                      <div style={{flex:1,marginRight:12}}>
+                      <div style={{flex:1}}>
                         <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Location</p>
                         <input style={{...C.input,fontSize:13,padding:'8px 10px'}} placeholder="e.g. Tampa, FL"
                           value={activePhoto.stamp.locationText} onChange={e=>updateStamp(activePhoto.id,{locationText:e.target.value})}/>
@@ -545,8 +564,7 @@ export default function StudioPage(){
                   </div>
                 </div>
 
-                <button onClick={()=>addToOrder(activePhoto)}
-                  disabled={addedState}
+                <button onClick={()=>addToOrder(activePhoto)} disabled={addedState}
                   style={{...C.accent,background:addedState?'#C4B5A5':'#D97A43',cursor:addedState?'default':'pointer'}}>
                   {addedState?'Added to order ✓':'Add to order with these settings'}
                 </button>
