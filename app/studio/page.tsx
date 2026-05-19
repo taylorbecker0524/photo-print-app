@@ -197,34 +197,35 @@ export default function StudioPage(){
 
   useEffect(()=>{
     if(!previewPhoto) return
-    const img=new Image();img.onload=()=>setLoadedImg(img);img.src=previewPhoto.url
-  },[activePhotoId,previewIndex,selectedIds.size,previewPhoto?.url,previewPhoto?.filter])
-
-  useEffect(()=>{
-    const canvas=canvasRef.current;if(!canvas||!loadedImg||!previewPhoto) return
-    const maxW=Math.min(canvas.parentElement?.clientWidth??700,700),maxH=420
-    let cw=Math.min(maxW,loadedImg.naturalWidth),ch=(cw/loadedImg.naturalWidth)*loadedImg.naturalHeight
-    if(ch>maxH){ch=maxH;cw=(ch/loadedImg.naturalHeight)*loadedImg.naturalWidth}
-    canvas.width=Math.round(cw);canvas.height=Math.round(ch)
-    const ctx=canvas.getContext('2d')!
-    ctx.filter=getFCss(previewPhoto.filter);ctx.drawImage(loadedImg,0,0,cw,ch);ctx.filter='none'
-    const{stamp}=previewPhoto
-    if(stamp.style==='none'||stamp.style==='back') return
-    const lines:string[]=[]
-    if(stamp.showDate&&stamp.capturedAt){const d=new Date(stamp.capturedAt);const fmt=previewPhoto.stamp.dateFormat??'classic';lines.push(fmt==='classic'?`${String(d.getDate()).padStart(2,'0')} ${String(d.getMonth()+1).padStart(2,'0')} ${d.getFullYear()}`:d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}));if(stamp.showTime)lines.push(d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}))}
-    if(stamp.showLocation&&stamp.locationText) lines.push(stamp.locationText)
-    if(stamp.customText) lines.push(stamp.customText)
-    if(!lines.length) return
-    const fs=cw*0.022,pad=cw*0.025,lineH=fs*1.45
-    ctx.font=`bold ${Math.round(fs)}px Courier New, monospace`
-    const boxW=Math.max(...lines.map(l=>ctx.measureText(l).width))+pad*2,boxH=lines.length*lineH+pad*0.8
-    let bx=pad,by=ch-boxH-pad
-    if(stamp.position==='br') bx=cw-boxW-pad
-    if(stamp.position==='tl') by=pad
-    if(stamp.position==='tr'){bx=cw-boxW-pad;by=pad}
-    if(stamp.style==='burn'){ctx.fillStyle='#E8841A';ctx.shadowColor='rgba(232,132,26,0.6)';ctx.shadowBlur=3;lines.forEach((l,i)=>ctx.fillText(l,bx,by+pad*0.4+(i+1)*lineH-lineH*0.2));ctx.shadowBlur=0}
-    else{ctx.fillStyle='rgba(247,243,238,0.65)';ctx.fillRect(bx,by,boxW,boxH);ctx.fillStyle='rgba(43,42,40,0.85)';lines.forEach((l,i)=>ctx.fillText(l,bx+pad*0.8,by+pad*0.4+(i+1)*lineH-lineH*0.2))}
-  },[loadedImg,previewPhoto?.stamp,previewPhoto?.filter])
+    const img=new Image()
+    img.onload=()=>{
+      setLoadedImg(img)
+      const canvas=canvasRef.current;if(!canvas) return
+      const maxW=Math.min(canvas.parentElement?.clientWidth??700,700),maxH=420
+      let cw=Math.min(maxW,img.naturalWidth),ch=(cw/img.naturalWidth)*img.naturalHeight
+      if(ch>maxH){ch=maxH;cw=(ch/img.naturalHeight)*img.naturalWidth}
+      canvas.width=Math.round(cw);canvas.height=Math.round(ch)
+      const ctx=canvas.getContext('2d')!
+      ctx.filter=getFCss(previewPhoto.filter);ctx.drawImage(img,0,0,cw,ch);ctx.filter='none'
+      const{stamp}=previewPhoto
+      if(stamp.style==='none'||stamp.style==='back') return
+      const lines:string[]=[]
+      if(stamp.showDate&&stamp.capturedAt){const d=new Date(stamp.capturedAt);const fmt=stamp.dateFormat??'classic';lines.push(fmt==='classic'?`${String(d.getDate()).padStart(2,'0')} ${String(d.getMonth()+1).padStart(2,'0')} ${d.getFullYear()}`:d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}));if(stamp.showTime)lines.push(d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}))}
+      if(stamp.showLocation&&stamp.locationText) lines.push(stamp.locationText)
+      if(stamp.customText) lines.push(stamp.customText)
+      if(!lines.length) return
+      const fs=cw*0.022,pad=cw*0.025,lineH=fs*1.45
+      ctx.font=`bold ${Math.round(fs)}px Courier New, monospace`
+      const boxW=Math.max(...lines.map(l=>ctx.measureText(l).width))+pad*2,boxH=lines.length*lineH+pad*0.8
+      let bx=pad,by=ch-boxH-pad
+      if(stamp.position==='br') bx=cw-boxW-pad
+      if(stamp.position==='tl') by=pad
+      if(stamp.position==='tr'){bx=cw-boxW-pad;by=pad}
+      if(stamp.style==='burn'){ctx.fillStyle='#E8841A';ctx.shadowColor='rgba(232,132,26,0.6)';ctx.shadowBlur=3;lines.forEach((l,i)=>ctx.fillText(l,bx,by+pad*0.4+(i+1)*lineH-lineH*0.2));ctx.shadowBlur=0}
+      else{ctx.fillStyle='rgba(247,243,238,0.65)';ctx.fillRect(bx,by,boxW,boxH);ctx.fillStyle='rgba(43,42,40,0.85)';lines.forEach((l,i)=>ctx.fillText(l,bx+pad*0.8,by+pad*0.4+(i+1)*lineH-lineH*0.2))}
+    }
+    img.src=previewPhoto.url
+  },[previewPhoto?.url,previewPhoto?.filter,previewPhoto?.stamp,activePhotoId,previewIndex])
 
   const updatePhoto=(id:string,u:Partial<Photo>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,...u}:p));setAddedState(false)}
   const updateStamp=(id:string,u:Partial<StampConfig>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,stamp:{...p.stamp,...u}}:p));setAddedState(false)}
@@ -446,7 +447,7 @@ export default function StudioPage(){
         </div>
 
         {/* Right panel */}
-        {(activePhoto||selectedPhotos.length>0)&&(
+        {(activePhotoId||selectedIds.size>0)&&(
           <div style={{display:'flex',flexDirection:'column',gap:12}}>
 
             {/* FILTER — always shows all 7, clicking applies to selected or single */}
