@@ -140,6 +140,17 @@ export default function StudioPage(){
   const [bulkStyle,setBulkStyle]=useState<StampStyle>('burn')
   const [isMobile,setIsMobile]=useState(false)
 
+  // Persist photos across refresh using sessionStorage (store metadata only, not File objects)
+  useEffect(()=>{
+    try {
+      const saved = sessionStorage.getItem('archive-studio-sessions')
+      if(saved) setSessions(JSON.parse(saved))
+    } catch {}
+  },[])
+  useEffect(()=>{
+    try { sessionStorage.setItem('archive-studio-sessions', JSON.stringify(sessions)) } catch {}
+  },[sessions])
+
   useEffect(()=>{const check=()=>setIsMobile(window.innerWidth<768);check();window.addEventListener('resize',check);return ()=>window.removeEventListener('resize',check)},[])
 
   const activePhoto=photos.find(p=>p.id===activePhotoId)
@@ -164,6 +175,7 @@ export default function StudioPage(){
     )
     setPhotos(prev=>[...prev,...newPhotos])
     setSessions(prev=>prev.map(s=>s.id===sessionId?{...s,photoIds:[...s.photoIds,...newPhotoIds]}:s))
+    if(newPhotos.length>0) setActivePhotoId(prev=>prev??newPhotos[0].id)
   },[])
 
   const handleInitialFiles=useCallback(async(files:FileList|null)=>{
@@ -190,7 +202,7 @@ export default function StudioPage(){
   useEffect(()=>{
     if(!previewPhoto) return
     const img=new Image();img.onload=()=>setLoadedImg(img);img.src=previewPhoto.url
-  },[activePhotoId,previewIndex,selectedIds.size])
+  },[activePhotoId,previewIndex,selectedIds.size,previewPhoto?.filter])
 
   useEffect(()=>{
     const canvas=canvasRef.current;if(!canvas||!loadedImg||!previewPhoto) return
@@ -473,6 +485,14 @@ export default function StudioPage(){
                   ))}
                 </div>
               </div>
+            )}
+
+            {/* Add to order for multi-select */}
+            {isMultiSelect&&(
+              <button onClick={()=>{selectedPhotos.forEach(p=>addToOrder(p));setSelectedIds(new Set())}}
+                style={{...C.accent}}>
+                Add {selectedIds.size} photos to order
+              </button>
             )}
 
             {/* Individual editor - only when single photo */}
