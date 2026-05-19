@@ -1,13 +1,15 @@
 'use client'
-export const dynamic = 'force-dynamic'
 import { useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
 
-export default function LoginPage() {
-  const supabase = createClient(
+function getSupabase() {
+  const { createClient } = require('@supabase/supabase-js')
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
+}
+
+export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -17,6 +19,7 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
+    const supabase = getSupabase()
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: `${window.location.origin}/archive` }
@@ -27,6 +30,7 @@ export default function LoginPage() {
   }
 
   const handleGoogle = async () => {
+    const supabase = getSupabase()
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/archive` }
