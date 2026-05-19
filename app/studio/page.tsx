@@ -140,18 +140,14 @@ export default function StudioPage(){
   const [bulkStyle,setBulkStyle]=useState<StampStyle>('burn')
   const [isMobile,setIsMobile]=useState(false)
 
-  // Persist photos across refresh using sessionStorage (store metadata only, not File objects)
-  useEffect(()=>{
-    try {
-      const saved = sessionStorage.getItem('archive-studio-sessions')
-      if(saved) setSessions(JSON.parse(saved))
-    } catch {}
-  },[])
-  useEffect(()=>{
-    try { sessionStorage.setItem('archive-studio-sessions', JSON.stringify(sessions)) } catch {}
-  },[sessions])
+  useEffect(()=>{const check=()=>setIsMobile(window.innerWidth<768);check();window.addEventListener('resize',check);return ()=>window.removeEventListener('resize',check)},[])  
 
-  useEffect(()=>{const check=()=>setIsMobile(window.innerWidth<768);check();window.addEventListener('resize',check);return ()=>window.removeEventListener('resize',check)},[])
+  useEffect(()=>{
+    if(photos.length===0) return
+    const warn=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue=''}
+    window.addEventListener('beforeunload',warn)
+    return ()=>window.removeEventListener('beforeunload',warn)
+  },[photos.length])
 
   const activePhoto=photos.find(p=>p.id===activePhotoId)
   const selectedPhotos=Array.from(selectedIds).map(id=>photos.find(p=>p.id===id)).filter(Boolean) as Photo[]
