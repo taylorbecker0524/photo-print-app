@@ -198,7 +198,7 @@ export default function StudioPage(){
   useEffect(()=>{
     if(!previewPhoto) return
     const img=new Image();img.onload=()=>setLoadedImg(img);img.src=previewPhoto.url
-  },[activePhotoId,previewIndex,selectedIds.size,previewPhoto?.filter])
+  },[activePhotoId,previewIndex,selectedIds.size,previewPhoto?.url,previewPhoto?.filter])
 
   useEffect(()=>{
     const canvas=canvasRef.current;if(!canvas||!loadedImg||!previewPhoto) return
@@ -244,7 +244,7 @@ export default function StudioPage(){
 
   const toggleSelect=(id:string)=>{
     setSelectedIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);setPreviewIndex(0);return n})
-    if(!activePhotoId) setActivePhotoId(id)
+    setActivePhotoId(id)
     setAddedState(false)
   }
 
