@@ -445,8 +445,8 @@ export default function StudioPage(){
               </div>
             )}
 
-            {/* Individual editor - shows active or first selected */}
-            {activePhoto&&(
+            {/* Individual editor - only shows when single photo active, not bulk select */}
+            {activePhoto&&selectedPhotos.length<=1&&(
               <>
                 <div style={C.card}>
                   <div style={C.head}><span style={C.mono}>Filter</span></div>
