@@ -247,6 +247,23 @@ export default function StudioPage(){
     setPhotos(prev=>prev.map(p=>ids.includes(p.id)?{...p,stamp:{...p.stamp,style:s}}:p))
     setBulkStyle(s)
   }
+  // Generic bulk stamp update — applies a partial StampConfig to all selected photos
+  const applyBulkStamp=(u: Partial<StampConfig>)=>{
+    const ids=Array.from(selectedIds)
+    setPhotos(prev=>prev.map(p=>ids.includes(p.id)?{...p,stamp:{...p.stamp,...u}}:p))
+    setAddedState(false)
+  }
+  const applyBulkSize=(size: string)=>{
+    const ids=Array.from(selectedIds)
+    setPhotos(prev=>prev.map(p=>ids.includes(p.id)?{...p,size}:p))
+    setAddedState(false)
+  }
+  const detectBulkLocation=()=>{
+    navigator.geolocation?.getCurrentPosition(async pos=>{
+      const loc=await reverseGeocode(pos.coords.latitude,pos.coords.longitude)
+      if(loc) applyBulkStamp({locationText:loc,showLocation:true})
+    })
+  }
 
   // FIX 3: Sync bulk controls to first selected photo so highlight reflects reality
   const toggleSelect=(id:string)=>{
@@ -487,8 +504,8 @@ export default function StudioPage(){
               {isMultiSelect&&<p style={{fontSize:11,color:'#8A6F5A',fontStyle:'italic',padding:'0 12px 10px',textAlign:'center'}}>Tap a filter to apply to all {selectedIds.size} selected photos</p>}
             </div>
 
-            {/* Stamp style bulk — only when multi select */}
-            {isMultiSelect&&!isMobile&&(
+            {/* Stamp style bulk — multi select, desktop + mobile */}
+            {isMultiSelect&&(
               <div style={C.card}>
                 <div style={C.head}><span style={C.mono}>Stamp style — {selectedIds.size} selected</span></div>
                 <div style={{padding:'10px 12px',display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:6}}>
@@ -497,6 +514,73 @@ export default function StudioPage(){
                       style={{padding:'8px',fontSize:11,fontFamily:'Courier New, monospace',border:`1px solid ${bulkStyle===s?'#D97A43':'rgba(43,42,40,0.15)'}`,borderRadius:7,background:bulkStyle===s?'#F2D5C0':'#F7F3EE',cursor:'pointer',color:bulkStyle===s?'#8A3A10':'#2B2A28',minHeight:36}}>
                       {s==='burn'?'Classic burn':s==='overlay'?'Overlay':s==='back'?'Back of photo':'No stamp'}
                     </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* BULK TIMESTAMP — multi select. Write-only overrides; per-photo EXIF date/time stays. */}
+            {isMultiSelect&&(
+              <div style={C.card}>
+                <div style={C.head}><span style={C.mono}>Timestamp — {selectedIds.size} selected</span></div>
+                <div style={{padding:'8px 16px 14px'}}>
+                  <p style={{fontSize:11,color:'#8A6F5A',fontStyle:'italic',marginBottom:10,lineHeight:1.4}}>
+                    Each photo keeps its own captured date &amp; location. Changes here apply to all {selectedIds.size} selected.
+                  </p>
+                  <div style={C.togRow}>
+                    <div style={{flex:1}}>
+                      <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Show date</p>
+                      <p style={{fontSize:11,color:'#8A6F5A'}}>Uses each photo's own capture date</p>
+                      <div style={{display:'flex',gap:6,marginTop:6}}>
+                        {(['classic','modern'] as const).map(fmt=>(
+                          <button key={fmt} onClick={()=>applyBulkStamp({dateFormat:fmt})}
+                            style={{flex:1,padding:'5px 8px',fontSize:10,fontFamily:'Courier New, monospace',border:'1px solid rgba(43,42,40,0.15)',borderRadius:6,background:'#F7F3EE',cursor:'pointer',color:'#8A6F5A'}}>
+                            {fmt==='classic'?'17 05 2026':'May 17, 2026'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <Toggle checked={false} onChange={()=>applyBulkStamp({showDate:true})}/>
+                  </div>
+                  <div style={C.togRow}>
+                    <div style={{flex:1}}>
+                      <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Show time</p>
+                      <p style={{fontSize:11,color:'#8A6F5A'}}>Uses each photo's own capture time</p>
+                    </div>
+                    <Toggle checked={false} onChange={()=>applyBulkStamp({showTime:true})}/>
+                  </div>
+                  <div style={C.togRow}>
+                    <div style={{flex:1}}>
+                      <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Location</p>
+                      <input style={{...C.input,fontSize:13,padding:'8px 10px'}} placeholder={`Type to apply to all ${selectedIds.size} photos`}
+                        onChange={e=>applyBulkStamp({locationText:e.target.value,showLocation:!!e.target.value})}/>
+                      <button onClick={detectBulkLocation} style={{background:'none',border:'none',cursor:'pointer',fontSize:12,color:'#D97A43',textDecoration:'underline',padding:'4px 0',fontFamily:'inherit'}}>Detect my location</button>
+                    </div>
+                    <Toggle checked={false} onChange={()=>applyBulkStamp({showLocation:true})}/>
+                  </div>
+                  <span style={{...C.mono,display:'block',marginBottom:4,marginTop:10}}>Custom text</span>
+                  <input style={C.input} placeholder={`Type to apply to all ${selectedIds.size} photos`}
+                    onChange={e=>applyBulkStamp({customText:e.target.value})}/>
+                  <span style={{...C.mono,display:'block',marginBottom:4,marginTop:10}}>Position</span>
+                  <select style={C.select} onChange={e=>applyBulkStamp({position:e.target.value as StampPos})}>
+                    <option value="">Choose position</option>
+                    <option value="bl">Bottom left</option>
+                    <option value="br">Bottom right</option>
+                    <option value="tl">Top left</option>
+                    <option value="tr">Top right</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* BULK DEFAULT SIZE — multi select */}
+            {isMultiSelect&&(
+              <div style={C.card}>
+                <div style={C.head}><span style={C.mono}>Default size — {selectedIds.size} selected</span></div>
+                <div style={{padding:'10px 12px',display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
+                  {SIZES.map(s=>(
+                    <button key={s.key} onClick={()=>applyBulkSize(s.key)}
+                      style={{padding:'8px',fontSize:12,border:'1px solid rgba(43,42,40,0.15)',borderRadius:7,background:'#F7F3EE',cursor:'pointer',color:'#2B2A28',fontFamily:'inherit',minHeight:40}}>{s.label}</button>
                   ))}
                 </div>
               </div>
