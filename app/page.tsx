@@ -29,6 +29,25 @@ export default function HomePage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  // FIX 7: notecard typography helper
+  // Bigger size, no italic on body, darker color for contrast.
+  // The closing line ("that's why archive exists") is the only italic line
+  // for emphasis — typographic hierarchy carries emotional weight.
+  const noteBody = (size: number) => ({
+    fontSize: size,
+    lineHeight: 1.65,
+    color: '#3D3128',                     // darker than old #5C4A3A
+    fontFamily: 'Georgia, serif',
+    fontStyle: 'normal' as const,         // was italic — too hard to read at small size
+  })
+  const noteClose = (size: number) => ({  // closing line keeps italic
+    fontSize: size,
+    lineHeight: 1.65,
+    color: '#3D3128',
+    fontFamily: 'Georgia, serif',
+    fontStyle: 'italic' as const,
+  })
+
   const HeartSig = () => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8, fontFamily: 'Courier New, monospace', fontSize: 9, color: '#8A6F5A' }}>
       <svg width="10" height="9" viewBox="0 0 24 22" fill="#D97A43"><path d="M12 21.593c-5.63-5.539-11-10.297-11-14.402 0-3.791 3.068-5.191 5.281-5.191 1.312 0 4.151.501 5.719 4.457 1.59-3.968 4.464-4.447 5.726-4.447 2.54 0 5.274 1.621 5.274 5.181 0 4.069-5.136 8.625-11 14.402z" /></svg>
@@ -70,12 +89,15 @@ export default function HomePage() {
             <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>8 - 14 - 22</div>
           </div>
 
-          {/* Story notecard */}
-          <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '13px 15px', boxShadow: '0 2px 8px rgba(43,42,40,0.08)', position: 'relative', flexShrink: 0, width: 185, transform: 'rotate(1.5deg)', alignSelf: 'center' }}>
+          {/* Story notecard — FIX 7: larger size, no italic on body, darker color */}
+          <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '15px 17px', boxShadow: '0 2px 8px rgba(43,42,40,0.08)', position: 'relative', flexShrink: 0, width: 220, transform: 'rotate(1.5deg)', alignSelf: 'center' }}>
             <div style={{ position: 'absolute', width: 34, height: 10, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
-            {STORY.map((p, i) => (
-              <p key={i} style={{ fontSize: 8.5, lineHeight: 1.65, color: '#5C4A3A', fontStyle: 'italic', fontFamily: 'Georgia, serif', marginBottom: i < STORY.length - 1 ? 5 : 0 }}>{p}</p>
-            ))}
+            {STORY.map((p, i) => {
+              const isLast = i === STORY.length - 1
+              return (
+                <p key={i} style={{ ...(isLast ? noteClose(11) : noteBody(11)), marginBottom: isLast ? 0 : 7 }}>{p}</p>
+              )
+            })}
             <HeartSig />
           </div>
 
@@ -101,15 +123,15 @@ export default function HomePage() {
             <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>11 - 30 - 24</div>
           </div>
 
-          {/* Feature notecard */}
-          <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '13px 15px', boxShadow: '0 2px 8px rgba(43,42,40,0.08)', position: 'relative', flexShrink: 0, width: 182, transform: 'rotate(-1.5deg)', alignSelf: 'center' }}>
+          {/* Feature notecard — FIX 7: larger size, less italic, darker */}
+          <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '15px 17px', boxShadow: '0 2px 8px rgba(43,42,40,0.08)', position: 'relative', flexShrink: 0, width: 215, transform: 'rotate(-1.5deg)', alignSelf: 'center' }}>
             <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, left: -3, transform: 'rotate(-15deg)' }} />
             <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, right: -3, transform: 'rotate(15deg)' }} />
-            <p style={{ fontSize: 8.5, color: '#2B2A28', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1.5, marginBottom: 6 }}>
-              Remember the date stamp on old disposable camera prints? <em style={{ color: '#D97A43' }}>We brought it back.</em>
+            <p style={{ fontSize: 11, color: '#3D3128', fontFamily: 'Georgia, serif', lineHeight: 1.55, marginBottom: 8 }}>
+              Remember the date stamp on old disposable camera prints? <em style={{ color: '#D97A43', fontStyle: 'italic' }}>We brought it back.</em>
             </p>
-            <div style={{ fontFamily: 'Courier New, monospace', fontSize: 9, color: '#E8841A', fontWeight: 700, marginBottom: 6, letterSpacing: '0.07em' }}>5 - 13 - 25 - TAMPA, FL</div>
-            <p style={{ fontSize: 8, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
+            <div style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: '#E8841A', fontWeight: 700, marginBottom: 8, letterSpacing: '0.07em' }}>5 - 13 - 25 - TAMPA, FL</div>
+            <p style={{ fontSize: 10.5, color: '#5C4A3A', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
               Upload your photos, choose your stamp style, and we print and ship them to your door.
             </p>
           </div>
@@ -136,11 +158,14 @@ export default function HomePage() {
       {isMobile && (
         <div style={{ background: '#EDE6DC', width: '100%', paddingBottom: 16 }}>
           <div style={{ padding: '16px 16px 0' }}>
-            <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '14px 16px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', position: 'relative' }}>
+            <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '16px 18px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', position: 'relative' }}>
               <div style={{ position: 'absolute', width: 34, height: 10, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
-              {STORY.map((p, i) => (
-                <p key={i} style={{ fontSize: 12, lineHeight: 1.65, color: '#5C4A3A', fontStyle: 'italic', fontFamily: 'Georgia, serif', marginBottom: i < STORY.length - 1 ? 8 : 0 }}>{p}</p>
-              ))}
+              {STORY.map((p, i) => {
+                const isLast = i === STORY.length - 1
+                return (
+                  <p key={i} style={{ ...(isLast ? noteClose(13.5) : noteBody(13.5)), marginBottom: isLast ? 0 : 9 }}>{p}</p>
+                )
+              })}
               <HeartSig />
             </div>
           </div>
@@ -157,14 +182,14 @@ export default function HomePage() {
             ))}
           </div>
           <div style={{ padding: '8px 16px 0' }}>
-            <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '14px 16px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', position: 'relative' }}>
+            <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '16px 18px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', position: 'relative' }}>
               <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, left: -3, transform: 'rotate(-15deg)' }} />
               <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, right: -3, transform: 'rotate(15deg)' }} />
-              <p style={{ fontSize: 12, color: '#2B2A28', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1.5, marginBottom: 8 }}>
-                Remember the date stamp on old disposable camera prints? <em style={{ color: '#D97A43' }}>We brought it back.</em>
+              <p style={{ fontSize: 13.5, color: '#3D3128', fontFamily: 'Georgia, serif', lineHeight: 1.55, marginBottom: 9 }}>
+                Remember the date stamp on old disposable camera prints? <em style={{ color: '#D97A43', fontStyle: 'italic' }}>We brought it back.</em>
               </p>
-              <div style={{ fontFamily: 'Courier New, monospace', fontSize: 11, color: '#E8841A', fontWeight: 700, marginBottom: 8, letterSpacing: '0.07em' }}>5 - 13 - 25 - TAMPA, FL</div>
-              <p style={{ fontSize: 11, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
+              <div style={{ fontFamily: 'Courier New, monospace', fontSize: 12, color: '#E8841A', fontWeight: 700, marginBottom: 9, letterSpacing: '0.07em' }}>5 - 13 - 25 - TAMPA, FL</div>
+              <p style={{ fontSize: 12.5, color: '#5C4A3A', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
                 Upload your photos, choose your stamp style, and we print and ship them to your door.
               </p>
             </div>
