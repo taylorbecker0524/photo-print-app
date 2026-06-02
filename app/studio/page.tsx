@@ -6,6 +6,7 @@ type Filter = 'original' | 'film' | 'sepia' | 'bw' | 'faded' | 'vivid' | 'cool'
 type StampStyle = 'burn' | 'overlay' | 'none'
 type StampPos = 'bl' | 'br' | 'tl' | 'tr'
 type StampLocation = 'front' | 'back'
+type StampFont = 'classic' | 'pixel' | 'typewriter'  // FIX 16
 type StampConfig = {
   showDate: boolean; showTime: boolean; showLocation: boolean
   locationText: string; customText: string; style: StampStyle
@@ -13,6 +14,7 @@ type StampConfig = {
   hasExifDate: boolean; hasExifLocation: boolean
   dateFormat: 'modern' | 'classic'
   stampLocation: StampLocation
+  stampFont: StampFont  // FIX 16
 }
 type Photo = { id: string; file: File; url: string; sessionId: string; filter: Filter; stamp: StampConfig; size: string }
 type OrderItem = { id: string; photoId: string; url: string; fileName: string; filter: Filter; stamp: StampConfig; size: string; quantity: number }
@@ -89,8 +91,16 @@ async function reverseGeocode(lat: number, lon: number): Promise<string> {
 const DEFAULT_STAMP: StampConfig = {
   showDate:false,showTime:false,showLocation:false,locationText:'',customText:'',
   style:'burn',position:'bl',capturedAt:null,hasExifDate:false,hasExifLocation:false,
-  dateFormat:'classic',stampLocation:'front'
+  dateFormat:'classic',stampLocation:'front',stampFont:'classic'
 }
+
+// FIX 16: three curated stamp font options. css = canvas font string; webFont = Google Font CSS family
+const STAMP_FONTS: { key: StampFont; label: string; family: string; weight: number; sizeMult: number }[] = [
+  { key: 'classic',    label: 'Classic burn (LCD)',    family: '"Share Tech Mono", "Courier New", monospace', weight: 400, sizeMult: 1.0 },
+  { key: 'pixel',      label: 'Pixel print',           family: '"VT323", "Courier New", monospace',           weight: 400, sizeMult: 1.35 },
+  { key: 'typewriter', label: 'Typewriter (vintage)',  family: '"Special Elite", Georgia, serif',             weight: 400, sizeMult: 1.05 },
+]
+const getStampFont = (key: StampFont) => STAMP_FONTS.find(f=>f.key===key) ?? STAMP_FONTS[0]
 
 // FIX 5: build lines for FRONT stamp (date+time on separate lines for vertical layout)
 // FIX 5: build lines for BACK stamp (date+time on SAME line)
@@ -186,9 +196,33 @@ export default function StudioPage(){
   // overrides to any newly-added selected photo via a sync effect.
   const [bulkLocationText,setBulkLocationText]=useState('')
   const [bulkCustomText,setBulkCustomText]=useState('')
+  const [bulkDateOverride,setBulkDateOverride]=useState('')  // FIX 13: 'YYYY-MM-DD' or '' for no override
   const [isMobile,setIsMobile]=useState(false)
 
   useEffect(()=>{const check=()=>setIsMobile(window.innerWidth<768);check();window.addEventListener('resize',check);return ()=>window.removeEventListener('resize',check)},[])
+
+  // FIX 16: load Google Fonts for the three stamp fonts, then trigger a redraw.
+  // Without this, the canvas would render with the fallback font on first paint.
+  const [fontsReady,setFontsReady]=useState(false)
+  useEffect(()=>{
+    const id='archive-stamp-fonts'
+    if(!document.getElementById(id)){
+      const link=document.createElement('link')
+      link.id=id; link.rel='stylesheet'
+      link.href='https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&family=Special+Elite&display=swap'
+      document.head.appendChild(link)
+    }
+    // Wait for all three fonts to actually be ready, then flip state to force redraw
+    if((document as any).fonts?.ready){
+      Promise.all([
+        (document as any).fonts.load('16px "Share Tech Mono"'),
+        (document as any).fonts.load('16px "VT323"'),
+        (document as any).fonts.load('16px "Special Elite"'),
+      ]).then(()=>setFontsReady(true)).catch(()=>setFontsReady(true))
+    } else {
+      setFontsReady(true)
+    }
+  },[])
 
   useEffect(()=>{
     if(photos.length===0) return
@@ -227,6 +261,7 @@ export default function StudioPage(){
   const bulkSharedShowLocation = sharedValue(selectedPhotos, p=>p.stamp.showLocation)
   const bulkSharedDateFormat = sharedValue(selectedPhotos, p=>p.stamp.dateFormat)
   const bulkSharedPosition = sharedValue(selectedPhotos, p=>p.stamp.position)
+  const bulkSharedFont = sharedValue(selectedPhotos, p=>p.stamp.stampFont ?? 'classic')
 
   const processFiles=useCallback(async(files:FileList,sessionId:string)=>{
     const newPhotoIds:string[]=[]
@@ -296,8 +331,9 @@ export default function StudioPage(){
       // Back-of-photo stamp lines (date+time on same line per FIX 5)
       const lines=buildStampLinesForBack(previewPhoto.stamp)
       if(lines.length){
-        const fs=cw*0.028,pad=cw*0.04,lineH=fs*1.55
-        ctx.font=`${Math.round(fs)}px Courier New, monospace`
+        const fontDef=getStampFont(previewPhoto.stamp.stampFont??'classic')
+        const fs=cw*0.028*fontDef.sizeMult,pad=cw*0.04,lineH=fs*1.55
+        ctx.font=`${fontDef.weight} ${Math.round(fs)}px ${fontDef.family}`
         ctx.fillStyle='#2B2A28'
         const startY=ch-pad-lineH*(lines.length-1)
         lines.forEach((l,i)=>ctx.fillText(l,pad,startY+i*lineH))
@@ -328,8 +364,9 @@ export default function StudioPage(){
       if(stamp.stampLocation==='back'||stamp.style==='none') return
       const lines=buildStampLinesForFront(stamp)
       if(!lines.length) return
-      const fs=cw*0.022,pad=cw*0.025,lineH=fs*1.45
-      sctx.font=`bold ${Math.round(fs)}px Courier New, monospace`
+      const fontDef=getStampFont(stamp.stampFont??'classic')
+      const fs=cw*0.022*fontDef.sizeMult,pad=cw*0.025,lineH=fs*1.45
+      sctx.font=`${stamp.style==='burn'?'bold':fontDef.weight} ${Math.round(fs)}px ${fontDef.family}`
       const boxW=Math.max(...lines.map(l=>sctx.measureText(l).width))+pad*2,boxH=lines.length*lineH+pad*0.8
       let bx=pad,by=ch-boxH-pad
       if(stamp.position==='br') bx=cw-boxW-pad
@@ -351,7 +388,7 @@ export default function StudioPage(){
      previewPhoto?.stamp.showDate,previewPhoto?.stamp.showTime,previewPhoto?.stamp.showLocation,
      previewPhoto?.stamp.locationText,previewPhoto?.stamp.customText,previewPhoto?.stamp.style,
      previewPhoto?.stamp.position,previewPhoto?.stamp.dateFormat,previewPhoto?.stamp.stampLocation,
-     previewPhoto?.stamp.capturedAt,previewIndex,previewSide])
+     previewPhoto?.stamp.stampFont,previewPhoto?.stamp.capturedAt,previewIndex,previewSide,fontsReady])
 
   const updatePhoto=(id:string,u:Partial<Photo>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,...u}:p));setAddedState(false)}
   const updateStamp=(id:string,u:Partial<StampConfig>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,stamp:{...p.stamp,...u}}:p));setAddedState(false)}
@@ -386,7 +423,7 @@ export default function StudioPage(){
   // FIX 12: when bulk text overrides change (user typed) push to all selected.
   // When selection changes, push current override to newly-added photos.
   // We track which photos have already received the bulk text via a ref of last-applied selection.
-  const lastBulkSync = useRef<{ids:string[],loc:string,custom:string}>({ids:[],loc:'',custom:''})
+  const lastBulkSync = useRef<{ids:string[],loc:string,custom:string,dateOverride:string}>({ids:[],loc:'',custom:'',dateOverride:''})
   useEffect(()=>{
     const currentIds = Array.from(selectedIds)
     const lastIds = lastBulkSync.current.ids
@@ -394,18 +431,36 @@ export default function StudioPage(){
     const updates:Partial<StampConfig>={}
     if(bulkLocationText) {updates.locationText=bulkLocationText; updates.showLocation=true}
     if(bulkCustomText) updates.customText=bulkCustomText
-    if(Object.keys(updates).length>0 && newlyAdded.length>0){
-      setPhotos(prev=>prev.map(p=>newlyAdded.includes(p.id)?{...p,stamp:{...p.stamp,...updates}}:p))
+    if(bulkDateOverride) {
+      // Apply override: keep each photo's existing time-of-day if any, else noon
+      // Done inline per photo since each may have a different existing time
     }
-    lastBulkSync.current = {ids:currentIds, loc:bulkLocationText, custom:bulkCustomText}
-  },[selectedIds, bulkLocationText, bulkCustomText])
+    if(newlyAdded.length>0){
+      setPhotos(prev=>prev.map(p=>{
+        if(!newlyAdded.includes(p.id)) return p
+        const stampUpdates: Partial<StampConfig> = {...updates}
+        if(bulkDateOverride){
+          const[y,m,d]=bulkDateOverride.split('-')
+          const existing = p.stamp.capturedAt ? new Date(p.stamp.capturedAt) : new Date()
+          existing.setFullYear(+y,+m-1,+d)
+          if(!p.stamp.capturedAt) existing.setHours(12,0,0,0)
+          stampUpdates.capturedAt = existing.toISOString()
+          stampUpdates.hasExifDate = true
+          stampUpdates.showDate = true
+        }
+        return Object.keys(stampUpdates).length>0 ? {...p,stamp:{...p.stamp,...stampUpdates}} : p
+      }))
+    }
+    lastBulkSync.current = {ids:currentIds, loc:bulkLocationText, custom:bulkCustomText, dateOverride:bulkDateOverride}
+  },[selectedIds, bulkLocationText, bulkCustomText, bulkDateOverride])
 
   // FIX 9: When user clears selection (drops below 2), reset bulk text overrides
   useEffect(()=>{
     if(selectedIds.size<2){
       setBulkLocationText('')
       setBulkCustomText('')
-      lastBulkSync.current = {ids:[], loc:'', custom:''}
+      setBulkDateOverride('')
+      lastBulkSync.current = {ids:[], loc:'', custom:'', dateOverride:''}
     }
   },[selectedIds.size])
 
@@ -488,25 +543,7 @@ export default function StudioPage(){
         </div>
       </div>
 
-      {isMultiSelect&&isMobile&&(
-        <div style={{background:'#2B2A28',borderRadius:10,padding:'12px 16px',marginBottom:16,display:'flex',flexDirection:'column',gap:10}}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <span style={{fontFamily:'Courier New, monospace',fontSize:11,color:'rgba(247,243,238,0.7)'}}>{selectedIds.size} selected</span>
-            <button onClick={()=>setSelectedIds(new Set())} style={{background:'none',border:'none',color:'rgba(247,243,238,0.5)',cursor:'pointer',fontSize:18}}>×</button>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
-            {FILTERS.map(f=>{
-              const isActive = bulkSharedFilter===f.key
-              return (
-                <button key={f.key} onClick={()=>applyBulkFilter(f.key)}
-                  style={{padding:'6px 4px',fontSize:10,fontFamily:'Courier New, monospace',border:`1px solid ${isActive?'#D97A43':'rgba(255,255,255,0.2)'}`,borderRadius:6,background:isActive?'#D97A43':'transparent',cursor:'pointer',color:'rgba(247,243,238,0.9)'}}>
-                  {f.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      {/* FIX 15: removed the duplicate dark mobile filter bar — the right-panel Filter card covers mobile too */}
 
       <div style={{display:'grid',gridTemplateColumns:activePhotoId||selectedIds.size>0?'minmax(0,1fr) 320px':'1fr',gap:20}} className="studio-grid">
         <div>
@@ -750,9 +787,15 @@ export default function StudioPage(){
 
                   {activePhoto.stamp.stampLocation==='back'?(
                     /* FIX 6: updated helper text */
-                    <div style={{marginTop:14,padding:'10px 12px',background:'rgba(217,122,67,0.08)',borderRadius:6,fontSize:12,color:'#5C4A3A',lineHeight:1.5,fontStyle:'italic'}}>
-                      Date and details will be printed in black on the back of your photo. Use the BACK toggle in the photo preview to see exactly what will print.
-                    </div>
+                    <>
+                      <div style={{marginTop:14,padding:'10px 12px',background:'rgba(217,122,67,0.08)',borderRadius:6,fontSize:12,color:'#5C4A3A',lineHeight:1.5,fontStyle:'italic'}}>
+                        Date and details will be printed in black on the back of your photo. Use the BACK toggle in the photo preview to see exactly what will print.
+                      </div>
+                      <span style={{...C.mono,display:'block',marginBottom:4,marginTop:12}}>Font</span>
+                      <select style={C.select} value={activePhoto.stamp.stampFont??'classic'} onChange={e=>updateStamp(activePhoto.id,{stampFont:e.target.value as StampFont})}>
+                        {STAMP_FONTS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
+                      </select>
+                    </>
                   ):(
                     <>
                       <span style={{...C.mono,display:'block',marginBottom:4,marginTop:12}}>Style</span>
@@ -763,6 +806,10 @@ export default function StudioPage(){
                       </select>
                       {activePhoto.stamp.style!=='none'&&(
                         <>
+                          <span style={{...C.mono,display:'block',marginBottom:4,marginTop:10}}>Font</span>
+                          <select style={C.select} value={activePhoto.stamp.stampFont??'classic'} onChange={e=>updateStamp(activePhoto.id,{stampFont:e.target.value as StampFont})}>
+                            {STAMP_FONTS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
+                          </select>
                           <span style={{...C.mono,display:'block',marginBottom:4,marginTop:10}}>Position</span>
                           <select style={C.select} value={activePhoto.stamp.position} onChange={e=>updateStamp(activePhoto.id,{position:e.target.value as StampPos})}>
                             <option value="bl">Bottom left</option>
@@ -807,10 +854,36 @@ export default function StudioPage(){
                   <p style={{fontSize:11,color:'#8A6F5A',fontStyle:'italic',marginBottom:10,lineHeight:1.4}}>
                     Each photo keeps its own captured date &amp; location. Changes here apply to all selected.
                   </p>
+                  {/* FIX 13: bulk date override input */}
+                  <div style={{padding:'10px 0',borderBottom:'0.5px solid rgba(43,42,40,0.06)'}}>
+                    <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Set date for all selected</p>
+                    <p style={{fontSize:11,color:'#8A6F5A',marginBottom:6}}>Overrides each photo's captured date. Leave blank to keep originals.</p>
+                    <input type="date" value={bulkDateOverride}
+                      onChange={e=>{
+                        const v=e.target.value
+                        setBulkDateOverride(v)
+                        if(v){
+                          // Apply to currently selected photos, keeping each photo's existing time-of-day
+                          const ids=Array.from(selectedIds)
+                          setPhotos(prev=>prev.map(p=>{
+                            if(!ids.includes(p.id)) return p
+                            const[y,m,d]=v.split('-')
+                            const existing = p.stamp.capturedAt ? new Date(p.stamp.capturedAt) : new Date()
+                            existing.setFullYear(+y,+m-1,+d)
+                            if(!p.stamp.capturedAt) existing.setHours(12,0,0,0)
+                            return {...p,stamp:{...p.stamp,capturedAt:existing.toISOString(),hasExifDate:true,showDate:true}}
+                          }))
+                        }
+                      }}
+                      style={{...C.input,fontSize:13,padding:'8px 10px'}}/>
+                  </div>
                   <div style={C.togRow}>
                     <div style={{flex:1}}>
                       <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Show date</p>
                       <p style={{fontSize:11,color:'#8A6F5A'}}>Uses each photo's own capture date</p>
+                      {bulkSharedShowDate===true && selectedPhotos.some(p=>!p.stamp.capturedAt) && (
+                        <p style={{fontSize:11,color:'#D97A43',marginTop:4,fontStyle:'italic'}}>Some photos have no date — use "Set date for all selected" above</p>
+                      )}
                       <div style={{display:'flex',gap:6,marginTop:6}}>
                         {(['classic','modern'] as const).map(fmt=>{
                           const isActive = bulkSharedDateFormat===fmt
@@ -829,6 +902,9 @@ export default function StudioPage(){
                     <div style={{flex:1}}>
                       <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Show time</p>
                       <p style={{fontSize:11,color:'#8A6F5A'}}>Uses each photo's own capture time</p>
+                      {bulkSharedShowTime===true && selectedPhotos.some(p=>!p.stamp.capturedAt) && (
+                        <p style={{fontSize:11,color:'#D97A43',marginTop:4,fontStyle:'italic'}}>Some photos have no time — set a date above first</p>
+                      )}
                     </div>
                     <Toggle checked={bulkSharedShowTime===true} onChange={()=>applyBulkStamp({showTime:!(bulkSharedShowTime===true)})}/>
                   </div>
@@ -874,9 +950,16 @@ export default function StudioPage(){
 
                   {bulkSharedStampLocation==='back'?(
                     /* FIX 6: updated helper text */
-                    <div style={{marginTop:14,padding:'10px 12px',background:'rgba(217,122,67,0.08)',borderRadius:6,fontSize:12,color:'#5C4A3A',lineHeight:1.5,fontStyle:'italic'}}>
-                      Date and details will be printed in black on the back of each photo. Use the BACK toggle in the photo preview to see exactly what will print.
-                    </div>
+                    <>
+                      <div style={{marginTop:14,padding:'10px 12px',background:'rgba(217,122,67,0.08)',borderRadius:6,fontSize:12,color:'#5C4A3A',lineHeight:1.5,fontStyle:'italic'}}>
+                        Date and details will be printed in black on the back of each photo. Use the BACK toggle in the photo preview to see exactly what will print.
+                      </div>
+                      <span style={{...C.mono,display:'block',marginBottom:4,marginTop:12}}>Font</span>
+                      <select style={C.select} value={bulkSharedFont==='mixed'?'':(bulkSharedFont as string ?? 'classic')} onChange={e=>applyBulkStamp({stampFont:e.target.value as StampFont})}>
+                        {bulkSharedFont==='mixed'&&<option value="" disabled>Mixed — pick one</option>}
+                        {STAMP_FONTS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
+                      </select>
+                    </>
                   ):(
                     <>
                       <span style={{...C.mono,display:'block',marginBottom:4,marginTop:12}}>Style</span>
@@ -894,6 +977,11 @@ export default function StudioPage(){
                       {bulkSharedStyle==='mixed'&&<p style={{fontSize:11,color:'#D97A43',fontStyle:'italic',marginTop:6}}>Mixed styles — pick one to apply to all</p>}
                       {bulkSharedStyle!=='none'&&bulkSharedStyle!=='mixed'&&(
                         <>
+                          <span style={{...C.mono,display:'block',marginBottom:4,marginTop:10}}>Font</span>
+                          <select style={C.select} value={bulkSharedFont==='mixed'?'':(bulkSharedFont as string ?? 'classic')} onChange={e=>applyBulkStamp({stampFont:e.target.value as StampFont})}>
+                            {bulkSharedFont==='mixed'&&<option value="" disabled>Mixed — pick one</option>}
+                            {STAMP_FONTS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
+                          </select>
                           <span style={{...C.mono,display:'block',marginBottom:4,marginTop:10}}>Position</span>
                           <select style={C.select} value={bulkSharedPosition==='mixed'?'':(bulkSharedPosition as string ?? '')} onChange={e=>applyBulkStamp({position:e.target.value as StampPos})}>
                             <option value="" disabled>Choose position</option>
