@@ -11,10 +11,11 @@ type StampConfig = {
   showDate: boolean; showTime: boolean; showLocation: boolean
   locationText: string; customText: string; style: StampStyle
   position: StampPos; capturedAt: string | null
+  capturedAtOverride: string | null  // FIX 17a: bulk override, preserves original capturedAt
   hasExifDate: boolean; hasExifLocation: boolean
   dateFormat: 'modern' | 'classic'
   stampLocation: StampLocation
-  stampFont: StampFont  // FIX 16
+  stampFont: StampFont
 }
 type Photo = { id: string; file: File; url: string; sessionId: string; filter: Filter; stamp: StampConfig; size: string }
 type OrderItem = { id: string; photoId: string; url: string; fileName: string; filter: Filter; stamp: StampConfig; size: string; quantity: number }
@@ -51,6 +52,9 @@ const fmtDate = (iso: string, fmt: 'modern'|'classic' = 'classic') => {
     : d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
 }
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})
+
+// FIX 17a: effective date = override if set, else original capturedAt
+const effectiveCapturedAt = (s:StampConfig): string | null => s.capturedAtOverride ?? s.capturedAt
 
 async function readExif(file: File): Promise<{ date: string | null; lat: number | null; lon: number | null }> {
   try {
@@ -90,7 +94,8 @@ async function reverseGeocode(lat: number, lon: number): Promise<string> {
 
 const DEFAULT_STAMP: StampConfig = {
   showDate:false,showTime:false,showLocation:false,locationText:'',customText:'',
-  style:'burn',position:'bl',capturedAt:null,hasExifDate:false,hasExifLocation:false,
+  style:'burn',position:'bl',capturedAt:null,capturedAtOverride:null,
+  hasExifDate:false,hasExifLocation:false,
   dateFormat:'classic',stampLocation:'front',stampFont:'classic'
 }
 
@@ -106,11 +111,12 @@ const getStampFont = (key: StampFont) => STAMP_FONTS.find(f=>f.key===key) ?? STA
 // FIX 5: build lines for BACK stamp (date+time on SAME line)
 function buildStampLinesForFront(stamp:StampConfig):string[]{
   const lines:string[]=[]
-  if(stamp.showDate&&stamp.capturedAt){
-    lines.push(fmtDate(stamp.capturedAt, stamp.dateFormat??'classic'))
-    if(stamp.showTime) lines.push(fmtTime(stamp.capturedAt))
-  } else if(stamp.showTime&&stamp.capturedAt) {
-    lines.push(fmtTime(stamp.capturedAt))
+  const cap = effectiveCapturedAt(stamp)
+  if(stamp.showDate&&cap){
+    lines.push(fmtDate(cap, stamp.dateFormat??'classic'))
+    if(stamp.showTime) lines.push(fmtTime(cap))
+  } else if(stamp.showTime&&cap) {
+    lines.push(fmtTime(cap))
   }
   if(stamp.showLocation&&stamp.locationText) lines.push(stamp.locationText)
   if(stamp.customText) lines.push(stamp.customText)
@@ -119,13 +125,14 @@ function buildStampLinesForFront(stamp:StampConfig):string[]{
 function buildStampLinesForBack(stamp:StampConfig):string[]{
   const lines:string[]=[]
   const fmt=stamp.dateFormat??'classic'
+  const cap = effectiveCapturedAt(stamp)
   // FIX 5: date + time joined on one line for back of photo
-  if(stamp.showDate&&stamp.capturedAt&&stamp.showTime){
-    lines.push(`${fmtDate(stamp.capturedAt, fmt)}   ${fmtTime(stamp.capturedAt)}`)
-  } else if(stamp.showDate&&stamp.capturedAt){
-    lines.push(fmtDate(stamp.capturedAt, fmt))
-  } else if(stamp.showTime&&stamp.capturedAt){
-    lines.push(fmtTime(stamp.capturedAt))
+  if(stamp.showDate&&cap&&stamp.showTime){
+    lines.push(`${fmtDate(cap, fmt)}   ${fmtTime(cap)}`)
+  } else if(stamp.showDate&&cap){
+    lines.push(fmtDate(cap, fmt))
+  } else if(stamp.showTime&&cap){
+    lines.push(fmtTime(cap))
   }
   if(stamp.showLocation&&stamp.locationText) lines.push(stamp.locationText)
   if(stamp.customText) lines.push(stamp.customText)
@@ -151,8 +158,9 @@ function Toggle({checked,onChange}:{checked:boolean;onChange:()=>void}){
 
 function StampBullets({stamp,filter}:{stamp:StampConfig;filter:Filter}){
   const items=[]
-  if(stamp.showDate&&stamp.capturedAt) items.push(fmtDate(stamp.capturedAt,stamp.dateFormat??'classic'))
-  if(stamp.showTime&&stamp.capturedAt) items.push(fmtTime(stamp.capturedAt))
+  const cap = effectiveCapturedAt(stamp)
+  if(stamp.showDate&&cap) items.push(fmtDate(cap,stamp.dateFormat??'classic'))
+  if(stamp.showTime&&cap) items.push(fmtTime(cap))
   if(stamp.showLocation&&stamp.locationText) items.push(stamp.locationText)
   if(stamp.customText) items.push(stamp.customText)
   if(stamp.style!=='none'||stamp.stampLocation==='back'){
@@ -388,7 +396,7 @@ export default function StudioPage(){
      previewPhoto?.stamp.showDate,previewPhoto?.stamp.showTime,previewPhoto?.stamp.showLocation,
      previewPhoto?.stamp.locationText,previewPhoto?.stamp.customText,previewPhoto?.stamp.style,
      previewPhoto?.stamp.position,previewPhoto?.stamp.dateFormat,previewPhoto?.stamp.stampLocation,
-     previewPhoto?.stamp.stampFont,previewPhoto?.stamp.capturedAt,previewIndex,previewSide,fontsReady])
+     previewPhoto?.stamp.stampFont,previewPhoto?.stamp.capturedAt,previewPhoto?.stamp.capturedAtOverride,previewIndex,previewSide,fontsReady])
 
   const updatePhoto=(id:string,u:Partial<Photo>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,...u}:p));setAddedState(false)}
   const updateStamp=(id:string,u:Partial<StampConfig>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,stamp:{...p.stamp,...u}}:p));setAddedState(false)}
@@ -420,32 +428,24 @@ export default function StudioPage(){
     })
   }
 
-  // FIX 12: when bulk text overrides change (user typed) push to all selected.
+  // FIX 12/17a: when bulk text/date overrides change (user typed) push to all selected.
   // When selection changes, push current override to newly-added photos.
-  // We track which photos have already received the bulk text via a ref of last-applied selection.
+  // Override is non-destructive — sets capturedAtOverride, preserving original capturedAt.
   const lastBulkSync = useRef<{ids:string[],loc:string,custom:string,dateOverride:string}>({ids:[],loc:'',custom:'',dateOverride:''})
   useEffect(()=>{
     const currentIds = Array.from(selectedIds)
     const lastIds = lastBulkSync.current.ids
     const newlyAdded = currentIds.filter(id=>!lastIds.includes(id))
-    const updates:Partial<StampConfig>={}
-    if(bulkLocationText) {updates.locationText=bulkLocationText; updates.showLocation=true}
-    if(bulkCustomText) updates.customText=bulkCustomText
-    if(bulkDateOverride) {
-      // Apply override: keep each photo's existing time-of-day if any, else noon
-      // Done inline per photo since each may have a different existing time
-    }
     if(newlyAdded.length>0){
       setPhotos(prev=>prev.map(p=>{
         if(!newlyAdded.includes(p.id)) return p
-        const stampUpdates: Partial<StampConfig> = {...updates}
+        const stampUpdates: Partial<StampConfig> = {}
+        if(bulkLocationText) {stampUpdates.locationText=bulkLocationText; stampUpdates.showLocation=true}
+        if(bulkCustomText) stampUpdates.customText=bulkCustomText
         if(bulkDateOverride){
           const[y,m,d]=bulkDateOverride.split('-')
-          const existing = p.stamp.capturedAt ? new Date(p.stamp.capturedAt) : new Date()
-          existing.setFullYear(+y,+m-1,+d)
-          if(!p.stamp.capturedAt) existing.setHours(12,0,0,0)
-          stampUpdates.capturedAt = existing.toISOString()
-          stampUpdates.hasExifDate = true
+          const dt=new Date(+y,+m-1,+d,12,0,0)
+          stampUpdates.capturedAtOverride = dt.toISOString()
           stampUpdates.showDate = true
         }
         return Object.keys(stampUpdates).length>0 ? {...p,stamp:{...p.stamp,...stampUpdates}} : p
@@ -854,25 +854,28 @@ export default function StudioPage(){
                   <p style={{fontSize:11,color:'#8A6F5A',fontStyle:'italic',marginBottom:10,lineHeight:1.4}}>
                     Each photo keeps its own captured date &amp; location. Changes here apply to all selected.
                   </p>
-                  {/* FIX 13: bulk date override input */}
+                  {/* FIX 13/17a: bulk date override input — non-destructive, stored in capturedAtOverride */}
                   <div style={{padding:'10px 0',borderBottom:'0.5px solid rgba(43,42,40,0.06)'}}>
                     <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Set date for all selected</p>
-                    <p style={{fontSize:11,color:'#8A6F5A',marginBottom:6}}>Overrides each photo's captured date. Leave blank to keep originals.</p>
+                    <p style={{fontSize:11,color:'#8A6F5A',marginBottom:6}}>Overrides each photo's captured date. Clear to restore originals.</p>
                     <input type="date" value={bulkDateOverride}
                       onChange={e=>{
                         const v=e.target.value
                         setBulkDateOverride(v)
+                        const ids=Array.from(selectedIds)
                         if(v){
-                          // Apply to currently selected photos, keeping each photo's existing time-of-day
-                          const ids=Array.from(selectedIds)
-                          setPhotos(prev=>prev.map(p=>{
-                            if(!ids.includes(p.id)) return p
-                            const[y,m,d]=v.split('-')
-                            const existing = p.stamp.capturedAt ? new Date(p.stamp.capturedAt) : new Date()
-                            existing.setFullYear(+y,+m-1,+d)
-                            if(!p.stamp.capturedAt) existing.setHours(12,0,0,0)
-                            return {...p,stamp:{...p.stamp,capturedAt:existing.toISOString(),hasExifDate:true,showDate:true}}
-                          }))
+                          // Set override to noon on the chosen date (no time picker in bulk)
+                          const[y,m,d]=v.split('-')
+                          const dt=new Date(+y,+m-1,+d,12,0,0)
+                          const iso=dt.toISOString()
+                          setPhotos(prev=>prev.map(p=>ids.includes(p.id)
+                            ? {...p,stamp:{...p.stamp,capturedAtOverride:iso,showDate:true}}
+                            : p))
+                        } else {
+                          // Cleared: remove override, original capturedAt is restored automatically
+                          setPhotos(prev=>prev.map(p=>ids.includes(p.id)
+                            ? {...p,stamp:{...p.stamp,capturedAtOverride:null}}
+                            : p))
                         }
                       }}
                       style={{...C.input,fontSize:13,padding:'8px 10px'}}/>
@@ -880,8 +883,13 @@ export default function StudioPage(){
                   <div style={C.togRow}>
                     <div style={{flex:1}}>
                       <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Show date</p>
-                      <p style={{fontSize:11,color:'#8A6F5A'}}>Uses each photo's own capture date</p>
-                      {bulkSharedShowDate===true && selectedPhotos.some(p=>!p.stamp.capturedAt) && (
+                      {/* FIX 17b: subtitle reflects whether override is active */}
+                      <p style={{fontSize:11,color:'#8A6F5A'}}>
+                        {bulkDateOverride
+                          ? `Showing ${(()=>{const[y,m,d]=bulkDateOverride.split('-');return `${m} ${d} ${y}`})()} on all selected`
+                          : "Uses each photo's own capture date"}
+                      </p>
+                      {!bulkDateOverride && bulkSharedShowDate===true && selectedPhotos.some(p=>!effectiveCapturedAt(p.stamp)) && (
                         <p style={{fontSize:11,color:'#D97A43',marginTop:4,fontStyle:'italic'}}>Some photos have no date — use "Set date for all selected" above</p>
                       )}
                       <div style={{display:'flex',gap:6,marginTop:6}}>
@@ -901,8 +909,12 @@ export default function StudioPage(){
                   <div style={C.togRow}>
                     <div style={{flex:1}}>
                       <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Show time</p>
-                      <p style={{fontSize:11,color:'#8A6F5A'}}>Uses each photo's own capture time</p>
-                      {bulkSharedShowTime===true && selectedPhotos.some(p=>!p.stamp.capturedAt) && (
+                      <p style={{fontSize:11,color:'#8A6F5A'}}>
+                        {bulkDateOverride
+                          ? 'Set to noon on the override date (no time picker in bulk)'
+                          : "Uses each photo's own capture time"}
+                      </p>
+                      {!bulkDateOverride && bulkSharedShowTime===true && selectedPhotos.some(p=>!effectiveCapturedAt(p.stamp)) && (
                         <p style={{fontSize:11,color:'#D97A43',marginTop:4,fontStyle:'italic'}}>Some photos have no time — set a date above first</p>
                       )}
                     </div>
