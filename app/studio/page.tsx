@@ -206,6 +206,8 @@ export default function StudioPage(){
   const [bulkCustomText,setBulkCustomText]=useState('')
   const [bulkDateOverride,setBulkDateOverride]=useState('')  // FIX 13: 'YYYY-MM-DD' or '' for no override
   const [isMobile,setIsMobile]=useState(false)
+  // FIX A1 (P0 launch blocker): upload state for the photo-upload-then-checkout flow
+  const [uploadState,setUploadState]=useState<{active:boolean;current:number;total:number;error:string}>({active:false,current:0,total:0,error:''})
 
   useEffect(()=>{const check=()=>setIsMobile(window.innerWidth<768);check();window.addEventListener('resize',check);return ()=>window.removeEventListener('resize',check)},[])
 
@@ -486,7 +488,46 @@ export default function StudioPage(){
 
   const updateOrderQty=(itemId:string,delta:number)=>setOrderItems(prev=>prev.map(i=>i.id===itemId?{...i,quantity:Math.max(0,i.quantity+delta)}:i).filter(i=>i.quantity>0))
   const photoInOrder=(photoId:string)=>orderItems.filter(i=>i.photoId===photoId).reduce((s,i)=>s+i.quantity,0)
-  const goToCheckout=()=>{sessionStorage.setItem('print-cart',JSON.stringify(orderItems.map(i=>({size:i.size,quantity:i.quantity,stamp:i.stamp,filter:i.filter,fileName:i.fileName}))));router.push('/checkout')}
+  // FIX A1 (P0 launch blocker): compress + upload each unique photo to Supabase,
+  // then write the real storage paths into the cart before navigating to checkout.
+  // Without this, photoPath was a placeholder string and Prodigi got `url: undefined`.
+  const goToCheckout=async()=>{
+    if(uploadState.active) return
+    // Dedupe photos across order items — a single photo might be in multiple cart entries
+    const uniquePhotoIds = Array.from(new Set(orderItems.map(i=>i.photoId)))
+    setUploadState({active:true,current:0,total:uniquePhotoIds.length,error:''})
+
+    // Compress + upload each unique photo, mapping photoId → supabase path
+    const pathMap: Record<string,string> = {}
+    try {
+      const {compressForPrint, uploadCompressed} = await import('@/lib/compress')
+      for(let i=0; i<uniquePhotoIds.length; i++){
+        const photoId = uniquePhotoIds[i]
+        const photo = photos.find(p=>p.id===photoId)
+        if(!photo) throw new Error(`Photo ${photoId} not found in state`)
+        const compressed = await compressForPrint(photo.file)
+        const path = await uploadCompressed(compressed.blob, photo.file.name)
+        pathMap[photoId] = path
+        setUploadState(s=>({...s,current:i+1}))
+      }
+    } catch(err:any) {
+      setUploadState({active:false,current:0,total:0,error: err?.message ?? 'Upload failed. Please try again.'})
+      return
+    }
+
+    // Build the cart payload with real supabase paths
+    const cart = orderItems.map(i=>({
+      size:i.size,
+      quantity:i.quantity,
+      stamp:i.stamp,
+      filter:i.filter,
+      fileName:i.fileName,
+      photoPath: pathMap[i.photoId],  // Real Supabase path — what /api/checkout reads
+    }))
+    sessionStorage.setItem('print-cart', JSON.stringify(cart))
+    setUploadState({active:false,current:0,total:0,error:''})
+    router.push('/checkout')
+  }
 
   // FIX 2: CSS filter only on the photo canvas (bottom layer). Stamp canvas (top) stays unfiltered.
   const canvasCssFilter = previewSide==='front' && previewPhoto ? getFCss(previewPhoto.filter) : 'none'
@@ -659,11 +700,25 @@ export default function StudioPage(){
                 ))}
               </div>
               <div style={{position:'sticky',bottom:16,marginTop:16,background:'#2B2A28',borderRadius:14,padding:'16px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',boxShadow:'0 8px 32px rgba(43,42,40,0.2)',zIndex:50,gap:12}}>
-                <div>
-                  <p style={{fontFamily:'Courier New, monospace',fontSize:10,color:'rgba(247,243,238,0.55)',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:2}}>{totalQty} prints - $4.99 shipping</p>
-                  <p style={{fontFamily:'Georgia, serif',fontSize:22,color:'#F7F3EE',fontWeight:400}}>${(orderTotal+4.99).toFixed(2)}</p>
+                <div style={{flex:1,minWidth:0}}>
+                  {uploadState.error&&(
+                    <p style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#F5A878',marginBottom:4}}>{uploadState.error}</p>
+                  )}
+                  {uploadState.active?(
+                    <>
+                      <p style={{fontFamily:'Courier New, monospace',fontSize:10,color:'rgba(247,243,238,0.55)',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:2}}>Preparing photos {uploadState.current} of {uploadState.total}</p>
+                      <p style={{fontFamily:'Georgia, serif',fontSize:18,color:'#F7F3EE',fontWeight:400}}>Hang tight…</p>
+                    </>
+                  ):(
+                    <>
+                      <p style={{fontFamily:'Courier New, monospace',fontSize:10,color:'rgba(247,243,238,0.55)',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:2}}>{totalQty} prints - $4.99 shipping</p>
+                      <p style={{fontFamily:'Georgia, serif',fontSize:22,color:'#F7F3EE',fontWeight:400}}>${(orderTotal+4.99).toFixed(2)}</p>
+                    </>
+                  )}
                 </div>
-                <button onClick={goToCheckout} style={{...C.accent,width:'auto',padding:'13px 24px',fontSize:13,flexShrink:0}}>Checkout</button>
+                <button onClick={goToCheckout} disabled={uploadState.active} style={{...C.accent,width:'auto',padding:'13px 24px',fontSize:13,flexShrink:0,opacity:uploadState.active?0.6:1,cursor:uploadState.active?'not-allowed':'pointer'}}>
+                  {uploadState.active?'Uploading…':'Checkout'}
+                </button>
               </div>
             </div>
           )}
