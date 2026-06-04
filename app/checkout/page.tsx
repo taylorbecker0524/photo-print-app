@@ -5,7 +5,10 @@ import { loadStripe } from '@stripe/stripe-js'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
-type CartItem = { size: string; quantity: number; stamp: any; fileName: string }
+// FIX A1: cart now carries the real Supabase photoPath written by the studio
+// page's goToCheckout flow. Previously this was a placeholder string and
+// Prodigi would receive `url: undefined`.
+type CartItem = { size: string; quantity: number; stamp: any; fileName: string; photoPath: string }
 
 const BULK_TIERS = [
   { minQty: 100, prices: { '4x6': 0.29, '5x7': 0.69, '8x10': 1.49, 'square-4': 0.35, 'square-5': 0.69, 'square-8': 1.29 } },
@@ -33,11 +36,13 @@ const labelStyle: React.CSSProperties = {
 export default function CheckoutPage() {
   const router = useRouter()
   const [cart, setCart] = useState<CartItem[]>([])
-  const [step, setStep] = useState<'shipping' | 'payment' | 'uploading' | 'processing'>('shipping')
+  const [step, setStep] = useState<'shipping' | 'payment' | 'preparing' | 'processing'>('shipping')
   const [error, setError] = useState('')
   const [orderId, setOrderId] = useState('')
   const [stripeReady, setStripeReady] = useState(false)
   const paymentRef = useRef<HTMLDivElement>(null)
+  // FIX 9 (audit): use refs instead of window.__stripeElements
+  const stripeStateRef = useRef<{ stripe: any; elements: any } | null>(null)
   const [shipping, setShipping] = useState({
     name: '', email: '', line1: '', line2: '', city: '', state: '', zip: '', country: 'US'
   })
@@ -45,7 +50,20 @@ export default function CheckoutPage() {
   useEffect(() => {
     const stored = sessionStorage.getItem('print-cart')
     if (!stored) { router.push('/'); return }
-    setCart(JSON.parse(stored))
+    try {
+      const parsed = JSON.parse(stored)
+      // FIX A1: validate cart has real photoPath values (not placeholder fileName)
+      // If any item is missing photoPath, the user hit checkout in an inconsistent
+      // state and we should bounce them back to /studio rather than create a doomed order.
+      if (!Array.isArray(parsed) || parsed.some((i:any) => !i.photoPath)) {
+        sessionStorage.removeItem('print-cart')
+        router.push('/studio')
+        return
+      }
+      setCart(parsed)
+    } catch {
+      router.push('/')
+    }
   }, [])
 
   const totalQty = cart.reduce((s, i) => s + i.quantity, 0)
@@ -55,7 +73,7 @@ export default function CheckoutPage() {
   const handleShippingSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    setStep('uploading')
+    setStep('preparing')
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',
@@ -66,7 +84,7 @@ export default function CheckoutPage() {
             size: item.size,
             quantity: item.quantity,
             stamp: item.stamp,
-            photoPath: `uploads/placeholder-${item.fileName}`,
+            photoPath: item.photoPath,  // FIX A1: real path from Supabase upload
           })),
           shippingAddress: {
             name: shipping.name, line1: shipping.line1, line2: shipping.line2,
@@ -77,39 +95,52 @@ export default function CheckoutPage() {
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json()
       setOrderId(data.orderId)
+      clientSecretRef.current = data.clientSecret
       setStep('payment')
-
-      // Mount Stripe Elements after state update
-      setTimeout(async () => {
-        const stripe = await stripePromise
-        if (!stripe || !paymentRef.current) return
-        const elements = stripe.elements({
-          clientSecret: data.clientSecret,
-          appearance: {
-            theme: 'stripe',
-            variables: {
-              colorPrimary: '#D97A43',
-              colorBackground: '#F7F3EE',
-              fontFamily: 'Inter, system-ui, sans-serif',
-            },
-          },
-        })
-        const paymentEl = elements.create('payment')
-        paymentEl.mount(paymentRef.current)
-        paymentEl.on('ready', () => setStripeReady(true))
-        ;(window as any).__stripeElements = { stripe, elements }
-      }, 200)
     } catch (err: any) {
       setError(err.message ?? 'Something went wrong')
       setStep('shipping')
     }
   }
 
+  // FIX A8 (audit issue #8): mount Stripe Elements via effect when step becomes 'payment'
+  const clientSecretRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (step !== 'payment') return
+    if (!paymentRef.current) return
+    if (stripeStateRef.current) return // already mounted
+    const cs = clientSecretRef.current
+    if (!cs) return
+
+    let cancelled = false
+    ;(async () => {
+      const stripe = await stripePromise
+      if (!stripe || cancelled || !paymentRef.current) return
+      const elements = stripe.elements({
+        clientSecret: cs,
+        appearance: {
+          theme: 'stripe',
+          variables: {
+            colorPrimary: '#D97A43',
+            colorBackground: '#F7F3EE',
+            fontFamily: 'Inter, system-ui, sans-serif',
+          },
+        },
+      })
+      const paymentEl = elements.create('payment')
+      paymentEl.mount(paymentRef.current)
+      paymentEl.on('ready', () => { if (!cancelled) setStripeReady(true) })
+      stripeStateRef.current = { stripe, elements }
+    })()
+
+    return () => { cancelled = true }
+  }, [step])
+
   const handlePaymentSubmit = async () => {
-    if (!stripeReady) return
+    if (!stripeReady || !stripeStateRef.current) return
     setStep('processing')
     try {
-      const { stripe, elements } = (window as any).__stripeElements
+      const { stripe, elements } = stripeStateRef.current
       const { error: stripeError } = await stripe.confirmPayment({
         elements,
         confirmParams: {
@@ -136,7 +167,7 @@ export default function CheckoutPage() {
           {/* Steps */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
             {['Shipping', 'Payment'].map((s, i) => {
-              const active = (i === 0 && (step === 'shipping' || step === 'uploading')) || (i === 1 && (step === 'payment' || step === 'processing'))
+              const active = (i === 0 && (step === 'shipping' || step === 'preparing')) || (i === 1 && (step === 'payment' || step === 'processing'))
               const done = i === 0 && (step === 'payment' || step === 'processing')
               return (
                 <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -156,7 +187,7 @@ export default function CheckoutPage() {
             </div>
           )}
 
-          {(step === 'shipping' || step === 'uploading') && (
+          {(step === 'shipping' || step === 'preparing') && (
             <form onSubmit={handleShippingSubmit}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div style={{ gridColumn: '1/-1' }}>
@@ -196,8 +227,8 @@ export default function CheckoutPage() {
                   </select>
                 </div>
               </div>
-              <button type="submit" disabled={step === 'uploading'} style={{ width: '100%', marginTop: 24, padding: 14, background: '#2B2A28', color: '#F7F3EE', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'inherit', opacity: step === 'uploading' ? 0.6 : 1 }}>
-                {step === 'uploading' ? 'Preparing...' : 'Continue to payment →'}
+              <button type="submit" disabled={step === 'preparing'} style={{ width: '100%', marginTop: 24, padding: 14, background: '#2B2A28', color: '#F7F3EE', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'inherit', opacity: step === 'preparing' ? 0.6 : 1 }}>
+                {step === 'preparing' ? 'Preparing...' : 'Continue to payment →'}
               </button>
             </form>
           )}
