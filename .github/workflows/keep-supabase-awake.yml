@@ -1,0 +1,24 @@
+# .github/workflows/keep-supabase-awake.yml
+name: Keep Supabase awake
+
+on:
+  schedule:
+    # Every day at 7am UTC (3am ET). Adjust if you want a different time.
+    - cron: '0 7 * * *'
+  workflow_dispatch:  # lets you trigger manually from the GitHub UI
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/orders?select=id&limit=1")
+          echo "HTTP $response"
+          if [ "$response" -lt 200 ] || [ "$response" -ge 400 ]; then
+            echo "Ping failed with status $response"
+            exit 1
+          fi
