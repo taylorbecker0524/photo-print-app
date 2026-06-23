@@ -92,4 +92,26 @@ export async function sendShippingConfirmation({
             Your order #${orderId.slice(0, 8).toUpperCase()} is on its way.
           </p>
           <a href="${trackingUrl}" style="display:inline-block;background:#D97A43;color:#F7F3EE;padding:14px 28px;border-radius:6px;text-decoration:none;font-family:sans-serif;font-size:14px;font-weight:500">
-            Track your pac
+            Track your package
+          </a>
+          <p style="margin:16px 0 0;font-family:sans-serif;font-size:13px;color:#8A6F5A">
+            Tracking number: <strong>${trackingNumber}</strong>
+          </p>
+        </div>
+      </div>
+    `,
+  })
+}
+
+export async function sendAdminAlert({ subject, body }: { subject: string; body: string }) {
+  if (!process.env.RESEND_API_KEY) {
+    console.error('[email] RESEND_API_KEY missing, cannot send admin alert:', subject)
+    return
+  }
+  await resend.emails.send({
+    from: FROM,
+    to: ADMIN_EMAIL,
+    subject,
+    text: body,
+  })
+}
