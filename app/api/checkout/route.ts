@@ -4,6 +4,8 @@ import { randomUUID } from 'crypto'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+const FALLBACK_US_SHIPPING_CENTS = 699  // $6.99 — matches /api/shipping-quote
+
 function getPricePerPrint(size: string, totalQty: number): number {
   const tiers = [
     { minQty: 100, prices: { '4x6': 29, '5x7': 69, '8x10': 149, 'square-4': 35, 'square-5': 69, 'square-8': 129 } },
@@ -20,31 +22,81 @@ export async function POST(req: NextRequest) {
   try {
     const { createServerSupabase } = await import('@/lib/supabase')
     const { stripe } = await import('@/lib/stripe')
+    const { getProdigiShippingQuote, getSku } = await import('@/lib/prodigi')
+
     const body = await req.json()
     const { email, items, shippingAddress } = body
+
     if (!email || !items?.length || !shippingAddress) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
+
+    // US-only at launch
+    if (shippingAddress.country !== 'US') {
+      return NextResponse.json(
+        { error: 'We currently only ship within the United States' },
+        { status: 400 }
+      )
+    }
+
     const totalQty = items.reduce((s: number, i: any) => s + i.quantity, 0)
-    const subtotal = items.reduce((s: number, i: any) => s + getPricePerPrint(i.size, totalQty) * i.quantity, 0)
-    const total = subtotal + 499
+    const subtotal = items.reduce(
+      (s: number, i: any) => s + getPricePerPrint(i.size, totalQty) * i.quantity,
+      0
+    )
+
+    // FIX #11: SECURITY — always re-quote shipping server-side. Never trust the
+    // client's shippingCents value (an attacker could send $0). The client's
+    // value is just for instant UI feedback; the server decides the real charge.
+    let shippingCents: number
+    try {
+      const quote = await getProdigiShippingQuote({
+        items: items.map((i: any) => ({ sku: getSku(i.size), copies: i.quantity })),
+        destinationCountryCode: shippingAddress.country,
+        shippingMethod: 'Standard',
+      })
+      shippingCents = quote.shippingCents
+    } catch (quoteErr: any) {
+      console.error('[checkout] Prodigi quote failed, using fallback:', quoteErr?.message)
+      shippingCents = FALLBACK_US_SHIPPING_CENTS
+    }
+
+    const total = subtotal + shippingCents
+
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: total, currency: 'usd', receipt_email: email,
-      metadata: { email }, automatic_payment_methods: { enabled: true },
+      amount: total,
+      currency: 'usd',
+      receipt_email: email,
+      metadata: { email },
+      automatic_payment_methods: { enabled: true },
     })
+
     const supabase = createServerSupabase()
     const orderId = randomUUID()
     const orderItems = items.map((item: any) => ({
-      photo_path: item.photoPath, size: item.size, quantity: item.quantity,
-      stamp: item.stamp, unit_price_cents: getPricePerPrint(item.size, totalQty),
+      photo_path: item.photoPath,
+      size: item.size,
+      quantity: item.quantity,
+      stamp: item.stamp,
+      unit_price_cents: getPricePerPrint(item.size, totalQty),
     }))
+
     const { error: dbError } = await supabase.from('orders').insert({
-      id: orderId, email, status: 'pending',
+      id: orderId,
+      email,
+      status: 'pending',
       stripe_payment_intent_id: paymentIntent.id,
-      total_cents: total, items: orderItems, shipping_address: shippingAddress,
+      total_cents: total,
+      items: orderItems,
+      shipping_address: shippingAddress,
     })
     if (dbError) throw dbError
-    return NextResponse.json({ clientSecret: paymentIntent.client_secret, orderId, breakdown: { subtotal, shipping: 499, total } })
+
+    return NextResponse.json({
+      clientSecret: paymentIntent.client_secret,
+      orderId,
+      breakdown: { subtotal, shipping: shippingCents, total },
+    })
   } catch (err) {
     console.error('[checkout]', err)
     return NextResponse.json({ error: 'Checkout failed' }, { status: 500 })
