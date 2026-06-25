@@ -711,8 +711,8 @@ export default function StudioPage(){
                     </>
                   ):(
                     <>
-                      <p style={{fontFamily:'Courier New, monospace',fontSize:10,color:'rgba(247,243,238,0.55)',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:2}}>{totalQty} prints - $4.99 shipping</p>
-                      <p style={{fontFamily:'Georgia, serif',fontSize:22,color:'#F7F3EE',fontWeight:400}}>${(orderTotal+4.99).toFixed(2)}</p>
+                      <p style={{fontFamily:'Courier New, monospace',fontSize:10,color:'rgba(247,243,238,0.55)',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:2}}>{totalQty} prints - shipping at checkout</p>
+                      <p style={{fontFamily:'Georgia, serif',fontSize:22,color:'#F7F3EE',fontWeight:400}}>${orderTotal.toFixed(2)}<span style={{fontSize:11,opacity:0.55,marginLeft:6}}>+ shipping</span></p>
                     </>
                   )}
                 </div>
