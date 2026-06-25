@@ -3,15 +3,13 @@ import { NextRequest, NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// US-only flat rate fallback used when Prodigi quote API is unavailable.
-// Set conservatively above typical Prodigi US shipping cost to protect margin.
 const FALLBACK_US_SHIPPING_CENTS = 699  // $6.99
 
 export async function POST(req: NextRequest) {
   try {
     const { getProdigiShippingQuote, getSku } = await import('@/lib/prodigi')
     const body = await req.json()
-    const { items, destinationCountryCode } = body
+    const { items, destinationCountryCode, finish } = body
 
     if (!items?.length || !destinationCountryCode) {
       return NextResponse.json(
@@ -20,8 +18,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // US-only at launch. Reject other destinations explicitly so we don't
-    // accidentally accept an order we can't fulfill profitably.
+    if (finish !== 'lustre' && finish !== 'gloss') {
+      return NextResponse.json(
+        { error: 'Please select a finish (lustre or gloss) before calculating shipping' },
+        { status: 400 }
+      )
+    }
+
     if (destinationCountryCode !== 'US') {
       return NextResponse.json(
         { error: 'We currently only ship within the United States' },
@@ -29,7 +32,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Map cart items to Prodigi SKUs
     const prodigiItems = items.map((i: any) => ({
       sku: getSku(i.size),
       copies: i.quantity,
@@ -39,6 +41,7 @@ export async function POST(req: NextRequest) {
       const quote = await getProdigiShippingQuote({
         items: prodigiItems,
         destinationCountryCode,
+        finish,
         shippingMethod: 'Standard',
       })
       return NextResponse.json({
@@ -48,8 +51,6 @@ export async function POST(req: NextRequest) {
         source: 'prodigi',
       })
     } catch (quoteErr: any) {
-      // Prodigi quote failed — fall back to flat rate so customer can still
-      // check out. We swallow the actual API error for security but log it.
       console.error('[shipping-quote] Prodigi quote failed, using fallback:', quoteErr?.message)
       return NextResponse.json({
         shippingCents: FALLBACK_US_SHIPPING_CENTS,
