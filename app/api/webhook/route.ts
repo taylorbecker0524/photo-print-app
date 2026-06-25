@@ -20,7 +20,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }
 
-  // Only handle the events we care about. Acknowledge everything else with 200.
   if (event.type !== 'payment_intent.succeeded') {
     return NextResponse.json({ received: true, ignored: event.type })
   }
@@ -28,7 +27,6 @@ export async function POST(req: NextRequest) {
   const supabase = createServerSupabase()
   const pi = event.data.object as any
 
-  // Look up the order keyed by Stripe payment intent
   const { data: order, error: orderErr } = await supabase
     .from('orders')
     .select('*')
@@ -37,40 +35,35 @@ export async function POST(req: NextRequest) {
 
   if (orderErr || !order) {
     console.error('[webhook] order not found for PI', pi.id, orderErr)
-    // 200 so Stripe stops retrying — manual investigation needed for orphaned payments
     return NextResponse.json({ error: 'Order not found' }, { status: 200 })
   }
 
-  // FIX #2 (audit): idempotency guard. If we've already processed this order,
-  // bail out fast. Stripe retries succeeded events under various conditions and
-  // without this guard we'd create duplicate Prodigi orders + double-email customers.
+  // Idempotency guard
   if (order.status === 'paid' || order.status === 'processing' || order.status === 'shipped') {
     console.log('[webhook] order already processed, skipping', order.id, order.status)
     return NextResponse.json({ received: true, alreadyProcessed: true })
   }
 
-  // Mark as paid immediately so any concurrent retry sees the guard above
   await supabase.from('orders').update({ status: 'paid' }).eq('id', order.id)
 
-  // FIX #5 (audit): build Prodigi payload. Wrap entire fulfillment in try/catch
-  // so failures don't dangle the order silently. On failure: mark order as
-  // 'fulfillment_failed', record the error, alert the admin, and return 200 so
-  // Stripe doesn't retry (we don't want repeated fulfillment attempts).
   try {
-    // Generate signed URLs for each photo. Prodigi pulls from these URLs.
     const prodigiItems = await Promise.all(
       order.items.map(async (item: any, idx: number) => {
         const { data: signed, error: urlErr } = await supabase.storage
           .from('print-photos')
-          .createSignedUrl(item.photo_path, 60 * 60 * 24) // 24-hour TTL — Prodigi fetches once shortly after
+          .createSignedUrl(item.photo_path, 60 * 60 * 24)
         if (urlErr || !signed?.signedUrl) {
           throw new Error(`Failed to sign URL for ${item.photo_path}: ${urlErr?.message ?? 'no URL returned'}`)
         }
+        // FIX: pass finish attribute to Prodigi. Required for photo SKUs.
+        // Default to 'lustre' if somehow missing (older orders pre-feature)
+        const finish = item.finish ?? 'lustre'
         return {
           merchantReference: `${order.id}-item-${idx}`,
           sku: getSku(item.size),
           copies: item.quantity,
           sizing: 'fillPrintArea' as const,
+          attributes: { finish },
           assets: [{ printArea: 'default' as const, url: signed.signedUrl }],
         }
       })
@@ -95,10 +88,6 @@ export async function POST(req: NextRequest) {
       items: prodigiItems,
     })
 
-    // FIX #4 (audit): only mark processing AND send confirmation email AFTER
-    // Prodigi accepts the order. Previously the email went out before Prodigi
-    // was even called — customer would get "your order is confirmed" then we'd
-    // silently fail to fulfill.
     await supabase
       .from('orders')
       .update({
@@ -119,7 +108,6 @@ export async function POST(req: NextRequest) {
     const errorMessage = err?.message ?? 'Unknown Prodigi/fulfillment error'
     console.error('[webhook] fulfillment failed for order', order.id, err)
 
-    // Mark order as needing manual intervention
     await supabase
       .from('orders')
       .update({
@@ -128,7 +116,6 @@ export async function POST(req: NextRequest) {
       })
       .eq('id', order.id)
 
-    // Alert admin — fire and forget, don't block response on email
     sendAdminAlert({
       subject: `[archive] Fulfillment failed for order ${order.id}`,
       body: `
@@ -146,9 +133,6 @@ fulfillment or refund via Stripe dashboard.
       `.trim(),
     }).catch(e => console.error('[webhook] admin alert failed', e))
 
-    // Return 200 so Stripe stops retrying. The error is captured in the DB
-    // and the admin has been alerted; retrying via webhook would just send
-    // more failure emails.
     return NextResponse.json({ received: true, fulfillmentFailed: true, error: errorMessage })
   }
 }
