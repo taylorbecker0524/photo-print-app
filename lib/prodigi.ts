@@ -4,7 +4,6 @@
 const PRODIGI_URL = process.env.PRODIGI_API_URL ?? 'https://api.prodigi.com/v4.0'
 const PRODIGI_KEY = process.env.PRODIGI_API_KEY!
 
-// Map our size keys to Prodigi SKUs
 const SKU_MAP: Record<string, string> = {
   '4x6':      'GLOBAL-PHO-4X6',
   '5x7':      'GLOBAL-PHO-5X7',
@@ -13,6 +12,8 @@ const SKU_MAP: Record<string, string> = {
   'square-5': 'GLOBAL-PHO-5X5',
   'square-8': 'GLOBAL-PHO-8X8',
 }
+
+export type PhotoFinish = 'lustre' | 'gloss'
 
 export type ProdigiOrderPayload = {
   merchantReference: string
@@ -34,6 +35,7 @@ export type ProdigiOrderPayload = {
     sku: string
     copies: number
     sizing: 'fillPrintArea'
+    attributes?: Record<string, string>
     assets: Array<{
       printArea: 'default'
       url: string
@@ -67,8 +69,6 @@ export async function getProdigiOrder(prodigiOrderId: string) {
 export function getSku(size: string) {
   return SKU_MAP[size] ?? 'GLOBAL-PHO-4X6'
 }
-
-// ── Quote endpoint ────────────────────────────────────────────────────────
 
 export type ProdigiQuoteRequest = {
   shippingMethod?: 'Budget' | 'Standard' | 'Express' | 'Overnight'
@@ -114,10 +114,12 @@ export type ProdigiQuoteResponse = {
 export async function getProdigiShippingQuote({
   items,
   destinationCountryCode,
+  finish,
   shippingMethod = 'Standard',
 }: {
   items: Array<{ sku: string; copies: number }>
   destinationCountryCode: string
+  finish: PhotoFinish
   shippingMethod?: 'Budget' | 'Standard' | 'Express' | 'Overnight'
 }): Promise<{ shippingCents: number; itemsCents: number; currency: string; method: string }> {
   const res = await fetch(`${PRODIGI_URL}/quotes`, {
@@ -133,7 +135,7 @@ export async function getProdigiShippingQuote({
       items: items.map(i => ({
         sku: i.sku,
         copies: i.copies,
-        attributes: {},
+        attributes: { finish },
         assets: [{ printArea: 'default' }],
       })),
     } as ProdigiQuoteRequest),
