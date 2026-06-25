@@ -6,6 +6,7 @@ import { loadStripe } from '@stripe/stripe-js'
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
 type CartItem = { size: string; quantity: number; stamp: any; fileName: string; photoPath: string }
+type Finish = 'lustre' | 'gloss'
 
 const BULK_TIERS = [
   { minQty: 100, prices: { '4x6': 0.29, '5x7': 0.69, '8x10': 1.49, 'square-4': 0.35, 'square-5': 0.69, 'square-8': 1.29 } },
@@ -41,6 +42,7 @@ export default function CheckoutPage() {
   const stripeStateRef = useRef<{ stripe: any; elements: any } | null>(null)
   const clientSecretRef = useRef<string | null>(null)
   const [shippingCents, setShippingCents] = useState<number | null>(null)
+  const [finish, setFinish] = useState<Finish | null>(null)
   const [shipping, setShipping] = useState({
     name: '', email: '', line1: '', line2: '', city: '', state: '', zip: '', country: 'US'
   })
@@ -69,6 +71,12 @@ export default function CheckoutPage() {
   const handleShippingSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+
+    if (!finish) {
+      setError('Please choose a print finish (lustre or gloss)')
+      return
+    }
+
     setStep('quoting')
 
     let liveShippingCents: number
@@ -79,6 +87,7 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           items: cart.map(i => ({ size: i.size, quantity: i.quantity })),
           destinationCountryCode: shipping.country,
+          finish,
         }),
       })
       if (!quoteRes.ok) {
@@ -112,6 +121,7 @@ export default function CheckoutPage() {
             city: shipping.city, state: shipping.state, zip: shipping.zip, country: shipping.country,
           },
           shippingCents: liveShippingCents,
+          finish,
         }),
       })
       if (!res.ok) throw new Error(await res.text())
@@ -217,6 +227,49 @@ export default function CheckoutPage() {
 
           {isShippingStep && (
             <form onSubmit={handleShippingSubmit}>
+              <div style={{ marginBottom: 32, padding: 20, background: '#EFE8DF', borderRadius: 14, border: '1px solid rgba(43,42,40,0.06)' }}>
+                <p style={{ ...labelStyle, marginBottom: 8 }}>Print finish <span style={{ color: '#D97A43' }}>*</span></p>
+                <p style={{ fontSize: 12, color: '#8A6F5A', marginBottom: 14, lineHeight: 1.5 }}>
+                  Choose how your prints feel and look. Both are professional photo paper — this changes the surface only.
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <button
+                    type="button"
+                    onClick={() => setFinish('lustre')}
+                    style={{
+                      padding: '14px 16px',
+                      background: finish === 'lustre' ? '#2B2A28' : '#F7F3EE',
+                      color: finish === 'lustre' ? '#F7F3EE' : '#2B2A28',
+                      border: `1px solid ${finish === 'lustre' ? '#2B2A28' : 'rgba(43,42,40,0.15)'}`,
+                      borderRadius: 10,
+                      fontFamily: 'inherit',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Lustre</div>
+                    <div style={{ fontSize: 11, opacity: 0.7, lineHeight: 1.4 }}>Semi-matte. Soft sheen, resists fingerprints. Best for portraits and family photos.</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFinish('gloss')}
+                    style={{
+                      padding: '14px 16px',
+                      background: finish === 'gloss' ? '#2B2A28' : '#F7F3EE',
+                      color: finish === 'gloss' ? '#F7F3EE' : '#2B2A28',
+                      border: `1px solid ${finish === 'gloss' ? '#2B2A28' : 'rgba(43,42,40,0.15)'}`,
+                      borderRadius: 10,
+                      fontFamily: 'inherit',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Gloss</div>
+                    <div style={{ fontSize: 11, opacity: 0.7, lineHeight: 1.4 }}>Shiny finish. Vivid colors, high contrast. Classic photo lab look.</div>
+                  </button>
+                </div>
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div style={{ gridColumn: '1/-1' }}>
                   <label style={labelStyle}>Full name</label>
@@ -252,8 +305,27 @@ export default function CheckoutPage() {
                   </select>
                 </div>
               </div>
-              <button type="submit" disabled={step === 'quoting' || step === 'preparing'} style={{ width: '100%', marginTop: 24, padding: 14, background: '#2B2A28', color: '#F7F3EE', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'inherit', opacity: (step === 'quoting' || step === 'preparing') ? 0.6 : 1 }}>
-                {submitButtonLabel}
+              <button
+                type="submit"
+                disabled={step === 'quoting' || step === 'preparing' || !finish}
+                style={{
+                  width: '100%',
+                  marginTop: 24,
+                  padding: 14,
+                  background: '#2B2A28',
+                  color: '#F7F3EE',
+                  border: 'none',
+                  borderRadius: 12,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  cursor: (!finish || step === 'quoting' || step === 'preparing') ? 'not-allowed' : 'pointer',
+                  fontFamily: 'inherit',
+                  opacity: (step === 'quoting' || step === 'preparing' || !finish) ? 0.5 : 1,
+                }}
+              >
+                {!finish ? 'Choose a finish to continue' : submitButtonLabel}
               </button>
             </form>
           )}
@@ -288,7 +360,13 @@ export default function CheckoutPage() {
               </div>
             ))}
           </div>
-          <div style={{ borderTop: '1px solid rgba(43,42,40,0.1)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {finish && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#8A6F5A', marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(43,42,40,0.1)' }}>
+              <span>Finish</span>
+              <span style={{ textTransform: 'capitalize' }}>{finish}</span>
+            </div>
+          )}
+          <div style={{ borderTop: finish ? 'none' : '1px solid rgba(43,42,40,0.1)', paddingTop: finish ? 0 : 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#8A6F5A' }}>
               <span>Subtotal</span><span>${subtotal.toFixed(2)}</span>
             </div>
