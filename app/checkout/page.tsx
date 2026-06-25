@@ -5,9 +5,6 @@ import { loadStripe } from '@stripe/stripe-js'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
-// FIX A1: cart now carries the real Supabase photoPath written by the studio
-// page's goToCheckout flow. Previously this was a placeholder string and
-// Prodigi would receive `url: undefined`.
 type CartItem = { size: string; quantity: number; stamp: any; fileName: string; photoPath: string }
 
 const BULK_TIERS = [
@@ -36,13 +33,14 @@ const labelStyle: React.CSSProperties = {
 export default function CheckoutPage() {
   const router = useRouter()
   const [cart, setCart] = useState<CartItem[]>([])
-  const [step, setStep] = useState<'shipping' | 'payment' | 'preparing' | 'processing'>('shipping')
+  const [step, setStep] = useState<'shipping' | 'quoting' | 'payment' | 'preparing' | 'processing'>('shipping')
   const [error, setError] = useState('')
   const [orderId, setOrderId] = useState('')
   const [stripeReady, setStripeReady] = useState(false)
   const paymentRef = useRef<HTMLDivElement>(null)
-  // FIX 9 (audit): use refs instead of window.__stripeElements
   const stripeStateRef = useRef<{ stripe: any; elements: any } | null>(null)
+  const clientSecretRef = useRef<string | null>(null)
+  const [shippingCents, setShippingCents] = useState<number | null>(null)
   const [shipping, setShipping] = useState({
     name: '', email: '', line1: '', line2: '', city: '', state: '', zip: '', country: 'US'
   })
@@ -52,9 +50,6 @@ export default function CheckoutPage() {
     if (!stored) { router.push('/'); return }
     try {
       const parsed = JSON.parse(stored)
-      // FIX A1: validate cart has real photoPath values (not placeholder fileName)
-      // If any item is missing photoPath, the user hit checkout in an inconsistent
-      // state and we should bounce them back to /studio rather than create a doomed order.
       if (!Array.isArray(parsed) || parsed.some((i:any) => !i.photoPath)) {
         sessionStorage.removeItem('print-cart')
         router.push('/studio')
@@ -68,11 +63,37 @@ export default function CheckoutPage() {
 
   const totalQty = cart.reduce((s, i) => s + i.quantity, 0)
   const subtotal = cart.reduce((s, i) => s + getPrice(i.size, totalQty) * i.quantity, 0)
-  const total = subtotal + 4.99
+  const shippingDollars = shippingCents !== null ? shippingCents / 100 : null
+  const total = shippingDollars !== null ? subtotal + shippingDollars : subtotal
 
   const handleShippingSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setStep('quoting')
+
+    let liveShippingCents: number
+    try {
+      const quoteRes = await fetch('/api/shipping-quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: cart.map(i => ({ size: i.size, quantity: i.quantity })),
+          destinationCountryCode: shipping.country,
+        }),
+      })
+      if (!quoteRes.ok) {
+        const err = await quoteRes.json().catch(() => ({}))
+        throw new Error(err.error || 'Could not calculate shipping')
+      }
+      const quoteData = await quoteRes.json()
+      liveShippingCents = quoteData.shippingCents
+      setShippingCents(liveShippingCents)
+    } catch (err: any) {
+      setError(err.message ?? 'Could not calculate shipping')
+      setStep('shipping')
+      return
+    }
+
     setStep('preparing')
     try {
       const res = await fetch('/api/checkout', {
@@ -84,18 +105,22 @@ export default function CheckoutPage() {
             size: item.size,
             quantity: item.quantity,
             stamp: item.stamp,
-            photoPath: item.photoPath,  // FIX A1: real path from Supabase upload
+            photoPath: item.photoPath,
           })),
           shippingAddress: {
             name: shipping.name, line1: shipping.line1, line2: shipping.line2,
             city: shipping.city, state: shipping.state, zip: shipping.zip, country: shipping.country,
           },
+          shippingCents: liveShippingCents,
         }),
       })
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json()
       setOrderId(data.orderId)
       clientSecretRef.current = data.clientSecret
+      if (typeof data.breakdown?.shipping === 'number') {
+        setShippingCents(data.breakdown.shipping)
+      }
       setStep('payment')
     } catch (err: any) {
       setError(err.message ?? 'Something went wrong')
@@ -103,12 +128,10 @@ export default function CheckoutPage() {
     }
   }
 
-  // FIX A8 (audit issue #8): mount Stripe Elements via effect when step becomes 'payment'
-  const clientSecretRef = useRef<string | null>(null)
   useEffect(() => {
     if (step !== 'payment') return
     if (!paymentRef.current) return
-    if (stripeStateRef.current) return // already mounted
+    if (stripeStateRef.current) return
     const cs = clientSecretRef.current
     if (!cs) return
 
@@ -157,6 +180,12 @@ export default function CheckoutPage() {
     }
   }
 
+  const isShippingStep = step === 'shipping' || step === 'quoting' || step === 'preparing'
+  const submitButtonLabel =
+    step === 'quoting' ? 'Calculating shipping…' :
+    step === 'preparing' ? 'Preparing…' :
+    'Continue to payment →'
+
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '48px 24px' }}>
       <h1 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 40, fontWeight: 400, marginBottom: 8, color: '#2B2A28' }}>Checkout</h1>
@@ -164,10 +193,9 @@ export default function CheckoutPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 32 }}>
         <div>
-          {/* Steps */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
             {['Shipping', 'Payment'].map((s, i) => {
-              const active = (i === 0 && (step === 'shipping' || step === 'preparing')) || (i === 1 && (step === 'payment' || step === 'processing'))
+              const active = (i === 0 && isShippingStep) || (i === 1 && (step === 'payment' || step === 'processing'))
               const done = i === 0 && (step === 'payment' || step === 'processing')
               return (
                 <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -187,7 +215,7 @@ export default function CheckoutPage() {
             </div>
           )}
 
-          {(step === 'shipping' || step === 'preparing') && (
+          {isShippingStep && (
             <form onSubmit={handleShippingSubmit}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div style={{ gridColumn: '1/-1' }}>
@@ -221,14 +249,11 @@ export default function CheckoutPage() {
                   <label style={labelStyle}>Country</label>
                   <select style={inputStyle} value={shipping.country} onChange={e => setShipping(s => ({ ...s, country: e.target.value }))}>
                     <option value="US">United States</option>
-                    <option value="CA">Canada</option>
-                    <option value="GB">United Kingdom</option>
-                    <option value="AU">Australia</option>
                   </select>
                 </div>
               </div>
-              <button type="submit" disabled={step === 'preparing'} style={{ width: '100%', marginTop: 24, padding: 14, background: '#2B2A28', color: '#F7F3EE', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'inherit', opacity: step === 'preparing' ? 0.6 : 1 }}>
-                {step === 'preparing' ? 'Preparing...' : 'Continue to payment →'}
+              <button type="submit" disabled={step === 'quoting' || step === 'preparing'} style={{ width: '100%', marginTop: 24, padding: 14, background: '#2B2A28', color: '#F7F3EE', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'inherit', opacity: (step === 'quoting' || step === 'preparing') ? 0.6 : 1 }}>
+                {submitButtonLabel}
               </button>
             </form>
           )}
@@ -253,7 +278,6 @@ export default function CheckoutPage() {
           )}
         </div>
 
-        {/* Order summary */}
         <div style={{ background: '#EFE8DF', borderRadius: 20, border: '1px solid rgba(43,42,40,0.08)', padding: 24, height: 'fit-content' }}>
           <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 20, fontWeight: 400, marginBottom: 16 }}>Order summary</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
@@ -269,10 +293,20 @@ export default function CheckoutPage() {
               <span>Subtotal</span><span>${subtotal.toFixed(2)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#8A6F5A' }}>
-              <span>Shipping</span><span>$4.99</span>
+              <span>Shipping</span>
+              <span>
+                {shippingDollars === null
+                  ? <span style={{ fontStyle: 'italic', fontSize: 11 }}>Calculated at next step</span>
+                  : `$${shippingDollars.toFixed(2)}`}
+              </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 600, paddingTop: 8, borderTop: '1px solid rgba(43,42,40,0.1)', marginTop: 4 }}>
-              <span>Total</span><span>${total.toFixed(2)}</span>
+              <span>Total</span>
+              <span>
+                {shippingDollars === null
+                  ? `$${subtotal.toFixed(2)}+`
+                  : `$${total.toFixed(2)}`}
+              </span>
             </div>
           </div>
           <p style={{ marginTop: 16, fontSize: 11, color: '#8A6F5A', textAlign: 'center', letterSpacing: '0.04em' }}>🔒 Secure checkout via Stripe</p>
