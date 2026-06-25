@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const FALLBACK_US_SHIPPING_CENTS = 699  // $6.99 — matches /api/shipping-quote
+const FALLBACK_US_SHIPPING_CENTS = 699
 
 function getPricePerPrint(size: string, totalQty: number): number {
   const tiers = [
@@ -25,13 +25,19 @@ export async function POST(req: NextRequest) {
     const { getProdigiShippingQuote, getSku } = await import('@/lib/prodigi')
 
     const body = await req.json()
-    const { email, items, shippingAddress } = body
+    const { email, items, shippingAddress, finish } = body
 
     if (!email || !items?.length || !shippingAddress) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // US-only at launch
+    if (finish !== 'lustre' && finish !== 'gloss') {
+      return NextResponse.json(
+        { error: 'Please select a finish (lustre or gloss)' },
+        { status: 400 }
+      )
+    }
+
     if (shippingAddress.country !== 'US') {
       return NextResponse.json(
         { error: 'We currently only ship within the United States' },
@@ -45,14 +51,12 @@ export async function POST(req: NextRequest) {
       0
     )
 
-    // FIX #11: SECURITY — always re-quote shipping server-side. Never trust the
-    // client's shippingCents value (an attacker could send $0). The client's
-    // value is just for instant UI feedback; the server decides the real charge.
     let shippingCents: number
     try {
       const quote = await getProdigiShippingQuote({
         items: items.map((i: any) => ({ sku: getSku(i.size), copies: i.quantity })),
         destinationCountryCode: shippingAddress.country,
+        finish,
         shippingMethod: 'Standard',
       })
       shippingCents = quote.shippingCents
@@ -67,7 +71,7 @@ export async function POST(req: NextRequest) {
       amount: total,
       currency: 'usd',
       receipt_email: email,
-      metadata: { email },
+      metadata: { email, finish },
       automatic_payment_methods: { enabled: true },
     })
 
@@ -78,6 +82,7 @@ export async function POST(req: NextRequest) {
       size: item.size,
       quantity: item.quantity,
       stamp: item.stamp,
+      finish,
       unit_price_cents: getPricePerPrint(item.size, totalQty),
     }))
 
