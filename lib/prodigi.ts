@@ -145,7 +145,9 @@ export async function getProdigiShippingQuote({
     throw new Error(`Prodigi quote failed: ${res.status} ${err}`)
   }
   const data = (await res.json()) as ProdigiQuoteResponse
-  if (data.outcome !== 'Ok' || !data.quotes?.length) {
+  // Prodigi returns warnings (e.g. sales tax notice) with outcome 'CreatedWithIssues'.
+  // Only fail if there are literally no quotes to use.
+  if (!data.quotes?.length) {
     throw new Error(`Prodigi quote returned no quotes: ${JSON.stringify(data.issues ?? data)}`)
   }
   const cheapest = data.quotes.reduce((min, q) =>
