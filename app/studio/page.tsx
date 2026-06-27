@@ -208,6 +208,8 @@ export default function StudioPage(){
   const [isMobile,setIsMobile]=useState(false)
   // FIX A1 (P0 launch blocker): upload state for the photo-upload-then-checkout flow
   const [uploadState,setUploadState]=useState<{active:boolean;current:number;total:number;error:string}>({active:false,current:0,total:0,error:''})
+  // FIX (Finish): order-level required print finish — lustre or gloss
+  const [finish,setFinish]=useState<'lustre'|'gloss'|null>(null)
 
   useEffect(()=>{const check=()=>setIsMobile(window.innerWidth<768);check();window.addEventListener('resize',check);return ()=>window.removeEventListener('resize',check)},[])
 
@@ -493,6 +495,11 @@ export default function StudioPage(){
   // Without this, photoPath was a placeholder string and Prodigi got `url: undefined`.
   const goToCheckout=async()=>{
     if(uploadState.active) return
+    // FIX (Finish): require finish before checkout
+    if(!finish){
+      setUploadState({active:false,current:0,total:0,error:'Please choose a print finish (lustre or gloss) before continuing'})
+      return
+    }
     // Dedupe photos across order items — a single photo might be in multiple cart entries
     const uniquePhotoIds = Array.from(new Set(orderItems.map(i=>i.photoId)))
     setUploadState({active:true,current:0,total:uniquePhotoIds.length,error:''})
@@ -522,9 +529,11 @@ export default function StudioPage(){
       stamp:i.stamp,
       filter:i.filter,
       fileName:i.fileName,
-      photoPath: pathMap[i.photoId],  // Real Supabase path — what /api/checkout reads
+      photoPath: pathMap[i.photoId],
     }))
+    // FIX (Finish): persist finish alongside the cart for checkout to read
     sessionStorage.setItem('print-cart', JSON.stringify(cart))
+    sessionStorage.setItem('print-finish', finish)
     setUploadState({active:false,current:0,total:0,error:''})
     router.push('/checkout')
   }
@@ -711,13 +720,15 @@ export default function StudioPage(){
                     </>
                   ):(
                     <>
-                      <p style={{fontFamily:'Courier New, monospace',fontSize:10,color:'rgba(247,243,238,0.55)',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:2}}>{totalQty} prints - shipping at checkout</p>
+                      <p style={{fontFamily:'Courier New, monospace',fontSize:10,color:'rgba(247,243,238,0.55)',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:2}}>
+                        {totalQty} prints{finish?` · ${finish} finish`:''} - shipping at checkout
+                      </p>
                       <p style={{fontFamily:'Georgia, serif',fontSize:22,color:'#F7F3EE',fontWeight:400}}>${orderTotal.toFixed(2)}<span style={{fontSize:11,opacity:0.55,marginLeft:6}}>+ shipping</span></p>
                     </>
                   )}
                 </div>
-                <button onClick={goToCheckout} disabled={uploadState.active} style={{...C.accent,width:'auto',padding:'13px 24px',fontSize:13,flexShrink:0,opacity:uploadState.active?0.6:1,cursor:uploadState.active?'not-allowed':'pointer'}}>
-                  {uploadState.active?'Uploading…':'Checkout'}
+                <button onClick={goToCheckout} disabled={uploadState.active||!finish} style={{...C.accent,width:'auto',padding:'13px 24px',fontSize:13,flexShrink:0,opacity:(uploadState.active||!finish)?0.5:1,cursor:(uploadState.active||!finish)?'not-allowed':'pointer'}}>
+                  {uploadState.active?'Uploading…':!finish?'Choose finish':'Checkout'}
                 </button>
               </div>
             </div>
@@ -738,6 +749,29 @@ export default function StudioPage(){
                 <button onClick={()=>setSelectedIds(new Set())} style={{background:'rgba(247,243,238,0.1)',color:'#F7F3EE',border:'1px solid rgba(247,243,238,0.2)',borderRadius:6,padding:'6px 12px',fontSize:11,fontFamily:'Courier New, monospace',letterSpacing:'0.06em',textTransform:'uppercase',cursor:'pointer'}}>Clear</button>
               </div>
             )}
+
+            {/* FIX (Finish): Order Settings card — applies to entire order, required */}
+            <div style={C.card}>
+              <div style={C.head}>
+                <span style={C.mono}>Order settings</span>
+              </div>
+              <div style={{padding:'10px 12px 12px'}}>
+                <p style={{fontSize:13,color:'#2B2A28',fontWeight:500,marginBottom:2}}>Finish <span style={{color:'#D97A43'}}>*</span></p>
+                <p style={{fontSize:11,color:'#8A6F5A',marginBottom:8,lineHeight:1.4}}>Surface only. Both are pro photo paper. Applies to all photos.</p>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+                  {(['lustre','gloss'] as const).map(f=>{
+                    const isActive = finish===f
+                    return (
+                      <button key={f} onClick={()=>setFinish(f)}
+                        style={{padding:'9px 10px',background:isActive?'#F2D5C0':'#F7F3EE',color:isActive?'#8A3A10':'#2B2A28',border:`1px solid ${isActive?'#D97A43':'rgba(43,42,40,0.15)'}`,borderRadius:7,cursor:'pointer',textAlign:'left',fontFamily:'inherit'}}>
+                        <div style={{fontSize:12,fontWeight:500,textTransform:'capitalize',marginBottom:2}}>{f}</div>
+                        <div style={{fontSize:10,opacity:0.8,lineHeight:1.3}}>{f==='lustre'?'Semi-matte, soft sheen':'Shiny, vivid color'}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
 
             {/* FILTER */}
             <div style={C.card}>
@@ -824,53 +858,57 @@ export default function StudioPage(){
             {activePhoto&&!isMultiSelect&&(
               <div style={C.card}>
                 <div style={C.head}><span style={C.mono}>Stamp</span></div>
-                <div style={{padding:'14px 16px'}}>
-                  <p style={{fontSize:13,color:'#2B2A28',fontWeight:500,marginBottom:10}}>Where should the stamp go?</p>
-                  {/* FIX 7: removed (i) tooltip — explainer below covers it */}
-                  {(['front','back'] as const).map(loc=>{
-                    const isActive=activePhoto.stamp.stampLocation===loc
-                    return (
-                      <label key={loc} onClick={()=>updateStamp(activePhoto.id,{stampLocation:loc})}
-                        style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:8,background:isActive?'#F2D5C0':'#F7F3EE',border:`1px solid ${isActive?'#D97A43':'rgba(43,42,40,0.15)'}`,marginBottom:6,cursor:'pointer',fontSize:13,color:isActive?'#8A3A10':'#2B2A28'}}>
-                        <span style={{width:14,height:14,borderRadius:'50%',border:`2px solid ${isActive?'#D97A43':'rgba(43,42,40,0.3)'}`,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                          {isActive&&<span style={{width:6,height:6,borderRadius:'50%',background:'#D97A43'}}/>}
-                        </span>
-                        <span style={{flex:1}}>{loc==='front'?'Front of photo':'Back of photo'}</span>
-                      </label>
-                    )
-                  })}
+                <div style={{padding:'12px 14px'}}>
+                  {/* FIX (Compact): Front/Back as segmented buttons */}
+                  <div style={{display:'flex',gap:4,padding:3,background:'#F7F3EE',borderRadius:7,border:'0.5px solid rgba(43,42,40,0.1)',marginBottom:10}}>
+                    {(['front','back'] as const).map(loc=>{
+                      const isActive=activePhoto.stamp.stampLocation===loc
+                      return (
+                        <button key={loc} onClick={()=>updateStamp(activePhoto.id,{stampLocation:loc})}
+                          style={{flex:1,padding:'7px 0',background:isActive?'#F2D5C0':'transparent',border:isActive?'1px solid #D97A43':'1px solid transparent',borderRadius:5,fontSize:11,fontWeight:500,fontFamily:'Courier New, monospace',color:isActive?'#8A3A10':'#8A6F5A',cursor:'pointer',letterSpacing:'0.06em',textTransform:'uppercase'}}>
+                          {loc==='front'?'Front':'Back'}
+                        </button>
+                      )
+                    })}
+                  </div>
 
                   {activePhoto.stamp.stampLocation==='back'?(
-                    /* FIX 6: updated helper text */
                     <>
-                      <div style={{marginTop:14,padding:'10px 12px',background:'rgba(217,122,67,0.08)',borderRadius:6,fontSize:12,color:'#5C4A3A',lineHeight:1.5,fontStyle:'italic'}}>
-                        Date and details will be printed in black on the back of your photo. Use the BACK toggle in the photo preview to see exactly what will print.
+                      <div style={{padding:'8px 10px',background:'rgba(217,122,67,0.08)',borderRadius:6,fontSize:11,color:'#5C4A3A',lineHeight:1.4,fontStyle:'italic',marginBottom:10}}>
+                        Date and details print in black on the back. Use the BACK toggle in preview to see exactly what prints.
                       </div>
-                      <span style={{...C.mono,display:'block',marginBottom:4,marginTop:12}}>Font</span>
-                      <select style={C.select} value={activePhoto.stamp.stampFont??'classic'} onChange={e=>updateStamp(activePhoto.id,{stampFont:e.target.value as StampFont})}>
+                      <span style={{...C.mono,display:'block',marginBottom:4}}>Font</span>
+                      <select style={{...C.select,fontSize:13,padding:'7px 10px'}} value={activePhoto.stamp.stampFont??'classic'} onChange={e=>updateStamp(activePhoto.id,{stampFont:e.target.value as StampFont})}>
                         {STAMP_FONTS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
                       </select>
                     </>
                   ):(
                     <>
-                      <span style={{...C.mono,display:'block',marginBottom:4,marginTop:12}}>Style</span>
-                      <select style={C.select} value={activePhoto.stamp.style} onChange={e=>updateStamp(activePhoto.id,{style:e.target.value as StampStyle})}>
-                        <option value="burn">Classic burn</option>
-                        <option value="overlay">Subtle overlay</option>
-                        <option value="none">No stamp</option>
-                      </select>
-                      {activePhoto.stamp.style!=='none'&&(
-                        <>
-                          <span style={{...C.mono,display:'block',marginBottom:4,marginTop:10}}>Font</span>
-                          <select style={C.select} value={activePhoto.stamp.stampFont??'classic'} onChange={e=>updateStamp(activePhoto.id,{stampFont:e.target.value as StampFont})}>
-                            {STAMP_FONTS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
+                      {/* FIX (Compact): Style + Position 2-col grid */}
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+                        <div>
+                          <span style={{...C.mono,display:'block',marginBottom:4}}>Style</span>
+                          <select style={{...C.select,fontSize:12,padding:'7px 8px'}} value={activePhoto.stamp.style} onChange={e=>updateStamp(activePhoto.id,{style:e.target.value as StampStyle})}>
+                            <option value="burn">Classic burn</option>
+                            <option value="overlay">Subtle overlay</option>
+                            <option value="none">No stamp</option>
                           </select>
-                          <span style={{...C.mono,display:'block',marginBottom:4,marginTop:10}}>Position</span>
-                          <select style={C.select} value={activePhoto.stamp.position} onChange={e=>updateStamp(activePhoto.id,{position:e.target.value as StampPos})}>
+                        </div>
+                        <div>
+                          <span style={{...C.mono,display:'block',marginBottom:4}}>Position</span>
+                          <select style={{...C.select,fontSize:12,padding:'7px 8px'}} value={activePhoto.stamp.position} onChange={e=>updateStamp(activePhoto.id,{position:e.target.value as StampPos})} disabled={activePhoto.stamp.style==='none'}>
                             <option value="bl">Bottom left</option>
                             <option value="br">Bottom right</option>
                             <option value="tl">Top left</option>
                             <option value="tr">Top right</option>
+                          </select>
+                        </div>
+                      </div>
+                      {activePhoto.stamp.style!=='none'&&(
+                        <>
+                          <span style={{...C.mono,display:'block',marginBottom:4}}>Font</span>
+                          <select style={{...C.select,fontSize:13,padding:'7px 10px'}} value={activePhoto.stamp.stampFont??'classic'} onChange={e=>updateStamp(activePhoto.id,{stampFont:e.target.value as StampFont})}>
+                            {STAMP_FONTS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
                           </select>
                         </>
                       )}
