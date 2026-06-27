@@ -42,6 +42,7 @@ export default function CheckoutPage() {
   const stripeStateRef = useRef<{ stripe: any; elements: any } | null>(null)
   const clientSecretRef = useRef<string | null>(null)
   const [shippingCents, setShippingCents] = useState<number | null>(null)
+  // FIX: finish required, no default — customer must choose
   const [finish, setFinish] = useState<Finish | null>(null)
   const [shipping, setShipping] = useState({
     name: '', email: '', line1: '', line2: '', city: '', state: '', zip: '', country: 'US'
@@ -58,6 +59,11 @@ export default function CheckoutPage() {
         return
       }
       setCart(parsed)
+      // FIX (Finish): pick up finish chosen in studio if present
+      const storedFinish = sessionStorage.getItem('print-finish')
+      if (storedFinish === 'lustre' || storedFinish === 'gloss') {
+        setFinish(storedFinish)
+      }
     } catch {
       router.push('/')
     }
@@ -227,47 +233,65 @@ export default function CheckoutPage() {
 
           {isShippingStep && (
             <form onSubmit={handleShippingSubmit}>
+              {/* FIX (Finish): if finish was set in studio, show as confirmed;
+                  otherwise show the picker (backward-compat for direct nav). */}
               <div style={{ marginBottom: 32, padding: 20, background: '#EFE8DF', borderRadius: 14, border: '1px solid rgba(43,42,40,0.06)' }}>
-                <p style={{ ...labelStyle, marginBottom: 8 }}>Print finish <span style={{ color: '#D97A43' }}>*</span></p>
-                <p style={{ fontSize: 12, color: '#8A6F5A', marginBottom: 14, lineHeight: 1.5 }}>
-                  Choose how your prints feel and look. Both are professional photo paper — this changes the surface only.
-                </p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => setFinish('lustre')}
-                    style={{
-                      padding: '14px 16px',
-                      background: finish === 'lustre' ? '#2B2A28' : '#F7F3EE',
-                      color: finish === 'lustre' ? '#F7F3EE' : '#2B2A28',
-                      border: `1px solid ${finish === 'lustre' ? '#2B2A28' : 'rgba(43,42,40,0.15)'}`,
-                      borderRadius: 10,
-                      fontFamily: 'inherit',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Lustre</div>
-                    <div style={{ fontSize: 11, opacity: 0.7, lineHeight: 1.4 }}>Semi-matte. Soft sheen, resists fingerprints. Best for portraits and family photos.</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFinish('gloss')}
-                    style={{
-                      padding: '14px 16px',
-                      background: finish === 'gloss' ? '#2B2A28' : '#F7F3EE',
-                      color: finish === 'gloss' ? '#F7F3EE' : '#2B2A28',
-                      border: `1px solid ${finish === 'gloss' ? '#2B2A28' : 'rgba(43,42,40,0.15)'}`,
-                      borderRadius: 10,
-                      fontFamily: 'inherit',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Gloss</div>
-                    <div style={{ fontSize: 11, opacity: 0.7, lineHeight: 1.4 }}>Shiny finish. Vivid colors, high contrast. Classic photo lab look.</div>
-                  </button>
-                </div>
+                {finish ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <p style={{ ...labelStyle, marginBottom: 4 }}>Print finish</p>
+                      <p style={{ fontSize: 14, color: '#2B2A28', textTransform: 'capitalize', margin: 0, fontWeight: 500 }}>{finish}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { sessionStorage.removeItem('print-finish'); setFinish(null) }}
+                      style={{ background: 'none', border: 'none', color: '#D97A43', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}
+                    >Change</button>
+                  </div>
+                ) : (
+                  <>
+                    <p style={{ ...labelStyle, marginBottom: 8 }}>Print finish <span style={{ color: '#D97A43' }}>*</span></p>
+                    <p style={{ fontSize: 12, color: '#8A6F5A', marginBottom: 14, lineHeight: 1.5 }}>
+                      Choose how your prints feel and look. Both are professional photo paper — this changes the surface only.
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <button
+                        type="button"
+                        onClick={() => setFinish('lustre')}
+                        style={{
+                          padding: '14px 16px',
+                          background: '#F7F3EE',
+                          color: '#2B2A28',
+                          border: '1px solid rgba(43,42,40,0.15)',
+                          borderRadius: 10,
+                          fontFamily: 'inherit',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Lustre</div>
+                        <div style={{ fontSize: 11, opacity: 0.7, lineHeight: 1.4 }}>Semi-matte. Soft sheen, resists fingerprints. Best for portraits and family photos.</div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFinish('gloss')}
+                        style={{
+                          padding: '14px 16px',
+                          background: '#F7F3EE',
+                          color: '#2B2A28',
+                          border: '1px solid rgba(43,42,40,0.15)',
+                          borderRadius: 10,
+                          fontFamily: 'inherit',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Gloss</div>
+                        <div style={{ fontSize: 11, opacity: 0.7, lineHeight: 1.4 }}>Shiny finish. Vivid colors, high contrast. Classic photo lab look.</div>
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
