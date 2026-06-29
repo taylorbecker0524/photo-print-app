@@ -412,6 +412,12 @@ export default function CheckoutPage() {
             </div>
           </div>
           <p style={{ marginTop: 16, fontSize: 11, color: '#8A6F5A', textAlign: 'center', letterSpacing: '0.04em' }}>🔒 Secure checkout via Stripe</p>
+          <p style={{ marginTop: 8, fontSize: 10, color: '#8A6F5A', textAlign: 'center', lineHeight: 1.6 }}>
+            By placing your order you agree to our{' '}
+            <a href="/terms" target="_blank" style={{ color: '#D97A43', textDecoration: 'none' }}>Terms</a>,{' '}
+            <a href="/privacy" target="_blank" style={{ color: '#D97A43', textDecoration: 'none' }}>Privacy Policy</a>, and{' '}
+            <a href="/refund-shipping" target="_blank" style={{ color: '#D97A43', textDecoration: 'none' }}>Shipping & Refund Policy</a>.
+          </p>
         </div>
       </div>
     </div>
