@@ -243,6 +243,20 @@ export default function StudioPage(){
     return ()=>window.removeEventListener('beforeunload',warn)
   },[photos.length])
 
+  // FIX (Memory leak): revoke blob URLs on unmount so they don't leak.
+  // We use a ref to avoid revoking URLs that might still be in use during state updates.
+  const photoUrlsRef = useRef<string[]>([])
+  useEffect(()=>{
+    photoUrlsRef.current = photos.map(p=>p.url)
+  },[photos])
+  useEffect(()=>{
+    return ()=>{
+      photoUrlsRef.current.forEach(url=>{
+        if(url.startsWith('blob:')) URL.revokeObjectURL(url)
+      })
+    }
+  },[])
+
   const activePhoto=photos.find(p=>p.id===activePhotoId)
   const selectedPhotos=Array.from(selectedIds).map(id=>photos.find(p=>p.id===id)).filter(Boolean) as Photo[]
   const previewPhoto=selectedPhotos.length>1?selectedPhotos[previewIndex]:activePhoto
