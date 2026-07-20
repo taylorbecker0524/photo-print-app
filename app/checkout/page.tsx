@@ -49,24 +49,24 @@ export default function CheckoutPage() {
   })
 
   useEffect(() => {
-    const stored = sessionStorage.getItem('print-cart')
-    if (!stored) { router.push('/'); return }
-    try {
-      const parsed = JSON.parse(stored)
+    // FIX (Cart persistence): read from localStorage with TTL
+    let mounted = true
+    import('@/lib/storage').then(({getWithTTL, clearStored}) => {
+      if (!mounted) return
+      const parsed = getWithTTL<any[]>('print-cart')
+      if (!parsed) { router.push('/'); return }
       if (!Array.isArray(parsed) || parsed.some((i:any) => !i.photoPath)) {
-        sessionStorage.removeItem('print-cart')
+        clearStored('print-cart')
         router.push('/studio')
         return
       }
       setCart(parsed)
-      // FIX (Finish): pick up finish chosen in studio if present
-      const storedFinish = sessionStorage.getItem('print-finish')
+      const storedFinish = getWithTTL<string>('print-finish')
       if (storedFinish === 'lustre' || storedFinish === 'gloss') {
         setFinish(storedFinish)
       }
-    } catch {
-      router.push('/')
-    }
+    })
+    return () => { mounted = false }
   }, [])
 
   const totalQty = cart.reduce((s, i) => s + i.quantity, 0)
@@ -180,6 +180,12 @@ export default function CheckoutPage() {
     setStep('processing')
     try {
       const { stripe, elements } = stripeStateRef.current
+      // FIX (Cart persistence): clear cart before redirecting to Stripe.
+      // Order is already saved in Supabase; if payment fails the user can
+      // recover via the order ID in the URL.
+      const {clearStored} = await import('@/lib/storage')
+      clearStored('print-cart')
+      clearStored('print-finish')
       const { error: stripeError } = await stripe.confirmPayment({
         elements,
         confirmParams: {
@@ -244,7 +250,11 @@ export default function CheckoutPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => { sessionStorage.removeItem('print-finish'); setFinish(null) }}
+                      onClick={async () => {
+                        const {clearStored} = await import('@/lib/storage')
+                        clearStored('print-finish')
+                        setFinish(null)
+                      }}
                       style={{ background: 'none', border: 'none', color: '#D97A43', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}
                     >Change</button>
                   </div>
