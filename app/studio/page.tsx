@@ -545,9 +545,10 @@ export default function StudioPage(){
       fileName:i.fileName,
       photoPath: pathMap[i.photoId],
     }))
-    // FIX (Finish): persist finish alongside the cart for checkout to read
-    sessionStorage.setItem('print-cart', JSON.stringify(cart))
-    sessionStorage.setItem('print-finish', finish)
+    // FIX (Cart persistence): localStorage with 7-day TTL so abandoned carts survive
+    const {setWithTTL} = await import('@/lib/storage')
+    setWithTTL('print-cart', cart)
+    setWithTTL('print-finish', finish)
     setUploadState({active:false,current:0,total:0,error:''})
     router.push('/checkout')
   }
