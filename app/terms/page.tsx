@@ -1,4 +1,5 @@
 import { Metadata } from 'next'
+import { CONTACT_EMAIL } from '@/lib/contact'
 
 export const metadata: Metadata = {
   title: 'Terms of Service — Archive Yours',
@@ -101,7 +102,7 @@ export default function TermsPage() {
 
       <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 26, fontWeight: 400, marginTop: 32, marginBottom: 12 }}>14. Contact</h2>
       <p style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 24 }}>
-        Questions about these Terms? Contact Archive Yours, LLC at <a href="mailto:taylorbecker0524@gmail.com" style={{ color: '#D97A43' }}>taylorbecker0524@gmail.com</a>.
+        Questions about these Terms? Contact Archive Yours, LLC at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: '#D97A43' }}>{CONTACT_EMAIL}</a>.
       </p>
     </div>
   )

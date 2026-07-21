@@ -1,4 +1,5 @@
 import { Metadata } from 'next'
+import { CONTACT_EMAIL } from '@/lib/contact'
 
 export const metadata: Metadata = {
   title: 'Shipping & Refund Policy — Archive Yours',
@@ -57,7 +58,7 @@ export default function RefundShippingPage() {
         To request a replacement or refund:
       </p>
       <ol style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 16, paddingLeft: 24 }}>
-        <li style={{ marginBottom: 8 }}>Contact us at <a href="mailto:taylorbecker0524@gmail.com" style={{ color: '#D97A43' }}>taylorbecker0524@gmail.com</a> within <strong>14 days</strong> of receiving your order.</li>
+        <li style={{ marginBottom: 8 }}>Contact us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: '#D97A43' }}>{CONTACT_EMAIL}</a> within <strong>14 days</strong> of receiving your order.</li>
         <li style={{ marginBottom: 8 }}>Include your order number and a clear photo of the issue.</li>
         <li style={{ marginBottom: 8 }}>We'll respond within 2 business days and arrange a replacement or refund.</li>
       </ol>
@@ -79,12 +80,12 @@ export default function RefundShippingPage() {
 
       <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 26, fontWeight: 400, marginTop: 40, marginBottom: 12 }}>Order Cancellations</h2>
       <p style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 24 }}>
-        Because orders enter production shortly after payment, cancellations may not be possible. If you need to cancel, contact us at <a href="mailto:taylorbecker0524@gmail.com" style={{ color: '#D97A43' }}>taylorbecker0524@gmail.com</a> immediately. If printing has not yet started, we will cancel and refund. Once an order is in production, it cannot be cancelled.
+        Because orders enter production shortly after payment, cancellations may not be possible. If you need to cancel, contact us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: '#D97A43' }}>{CONTACT_EMAIL}</a> immediately. If printing has not yet started, we will cancel and refund. Once an order is in production, it cannot be cancelled.
       </p>
 
       <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 26, fontWeight: 400, marginTop: 40, marginBottom: 12 }}>Contact</h2>
       <p style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 24 }}>
-        Need help with an order? Email <a href="mailto:taylorbecker0524@gmail.com" style={{ color: '#D97A43' }}>taylorbecker0524@gmail.com</a> and we will respond within 1–2 business days.
+        Need help with an order? Email <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: '#D97A43' }}>{CONTACT_EMAIL}</a> and we will respond within 1–2 business days.
       </p>
     </div>
   )

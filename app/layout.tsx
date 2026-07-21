@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import Analytics from '@/lib/analytics'
 
 export const metadata: Metadata = {
   title: 'archive — Date & Location Stamp Photo Prints',
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="google-site-verification" content="LO-G4F3qX2tPGzBMUrq2GwMC01jyAjeKFiXjbSRdLog" />
       </head>
       <body style={{ background: '#F7F3EE', minHeight: '100vh', margin: 0, padding: 0, overflowX: 'hidden' }}>
+        <Analytics />
         <nav style={{
           position: 'sticky', top: 0, zIndex: 100,
           background: 'rgba(247,243,238,0.94)',

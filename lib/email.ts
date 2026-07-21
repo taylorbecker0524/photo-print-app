@@ -26,6 +26,12 @@ export async function sendOrderConfirmation({
     )
     .join('')
 
+  // Shipping is charged dynamically (Prodigi quote, with a flat fallback), so it
+  // isn't a fixed constant. Derive the exact amount the customer paid from the
+  // stored order total minus the item subtotal instead of hardcoding a value.
+  const itemsSubtotalCents = items.reduce((sum, i) => sum + i.unit_price_cents * i.quantity, 0)
+  const shippingCents = Math.max(0, totalCents - itemsSubtotalCents)
+
   await resend.emails.send({
     from: FROM,
     to: email,
@@ -44,7 +50,7 @@ export async function sendOrderConfirmation({
             ${itemRows}
             <tr>
               <td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#8A6F5A">Shipping</td>
-              <td style="padding:8px 0;border-bottom:1px solid #f0ede8;text-align:right;color:#8A6F5A">$4.99</td>
+              <td style="padding:8px 0;border-bottom:1px solid #f0ede8;text-align:right;color:#8A6F5A">$${(shippingCents / 100).toFixed(2)}</td>
             </tr>
             <tr>
               <td style="padding:12px 0 0;font-weight:600">Total</td>

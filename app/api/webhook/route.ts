@@ -13,9 +13,17 @@ export async function POST(req: NextRequest) {
   const sig = req.headers.get('stripe-signature')
   if (!sig) return NextResponse.json({ error: 'Missing signature' }, { status: 400 })
 
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+  if (!webhookSecret) {
+    // Fail loudly and clearly rather than throwing a cryptic error inside
+    // constructEvent. This is the #1 launch misconfiguration.
+    console.error('[webhook] STRIPE_WEBHOOK_SECRET is not set — cannot verify events')
+    return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 })
+  }
+
   let event
   try {
-    event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!)
+    event = stripe.webhooks.constructEvent(body, sig, webhookSecret)
   } catch (err) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }
@@ -45,6 +53,21 @@ export async function POST(req: NextRequest) {
   }
 
   await supabase.from('orders').update({ status: 'paid' }).eq('id', order.id)
+
+  // Send the customer's receipt as soon as payment is confirmed — independent of
+  // fulfillment. A Prodigi failure must NOT prevent the confirmation email, and
+  // an email failure must NOT flip the order to fulfillment_failed. Each concern
+  // gets its own try/catch (fulfillment is handled below).
+  try {
+    await sendOrderConfirmation({
+      email: order.email,
+      orderId: order.id,
+      items: order.items,
+      totalCents: order.total_cents,
+    })
+  } catch (emailErr) {
+    console.error('[webhook] confirmation email failed for order', order.id, emailErr)
+  }
 
   try {
     const prodigiItems = await Promise.all(
@@ -95,13 +118,6 @@ export async function POST(req: NextRequest) {
         prodigi_order_id: prodigiResult.order.id,
       })
       .eq('id', order.id)
-
-    await sendOrderConfirmation({
-      email: order.email,
-      orderId: order.id,
-      items: order.items,
-      totalCents: order.total_cents,
-    })
 
     return NextResponse.json({ received: true, prodigiOrderId: prodigiResult.order.id })
   } catch (err: any) {

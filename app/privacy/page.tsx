@@ -1,4 +1,5 @@
 import { Metadata } from 'next'
+import { CONTACT_EMAIL } from '@/lib/contact'
 
 export const metadata: Metadata = {
   title: 'Privacy Policy — Archive Yours',
@@ -72,7 +73,7 @@ export default function PrivacyPage() {
         <li style={{ marginBottom: 8 }}>Request a copy of your data in a portable format.</li>
       </ul>
       <p style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 24 }}>
-        To exercise these rights, contact us at <a href="mailto:taylorbecker0524@gmail.com" style={{ color: '#D97A43' }}>taylorbecker0524@gmail.com</a>.
+        To exercise these rights, contact us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: '#D97A43' }}>{CONTACT_EMAIL}</a>.
       </p>
 
       <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 26, fontWeight: 400, marginTop: 32, marginBottom: 12 }}>7. Children's Privacy</h2>
@@ -92,7 +93,7 @@ export default function PrivacyPage() {
 
       <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 26, fontWeight: 400, marginTop: 32, marginBottom: 12 }}>10. Contact Us</h2>
       <p style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 24 }}>
-        Questions about this Privacy Policy? Contact Archive Yours, LLC at <a href="mailto:taylorbecker0524@gmail.com" style={{ color: '#D97A43' }}>taylorbecker0524@gmail.com</a>.
+        Questions about this Privacy Policy? Contact Archive Yours, LLC at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: '#D97A43' }}>{CONTACT_EMAIL}</a>.
       </p>
     </div>
   )
