@@ -101,11 +101,15 @@ export async function POST(req: NextRequest) {
         email: order.email,
         address: {
           line1: addr.line1,
-          line2: addr.line2,
+          // Prodigi rejects optional fields that are present but empty
+          // ("MustNotBeEmptyOrWhitespace"), so only include line2 / stateOrCounty
+          // when the customer actually entered a value. Blank apartment/suite
+          // lines are common and must be omitted entirely, not sent as "".
+          ...(addr.line2 && String(addr.line2).trim() ? { line2: addr.line2 } : {}),
           postalOrZipCode: addr.zip,
           countryCode: addr.country,
           townOrCity: addr.city,
-          stateOrCounty: addr.state,
+          ...(addr.state && String(addr.state).trim() ? { stateOrCounty: addr.state } : {}),
         },
       },
       items: prodigiItems,
