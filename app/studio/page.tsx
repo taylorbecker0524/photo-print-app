@@ -82,13 +82,16 @@ async function readExif(file: File): Promise<{ date: string | null; lat: number 
   }
 }
 
+// Reverse-geocode via our own /api/geocode proxy (server-side), which sets the
+// User-Agent Nominatim requires and caches results to stay under the rate limit.
+// Calling Nominatim directly from the browser violates their usage policy and
+// breaks on bulk uploads.
 async function reverseGeocode(lat: number, lon: number): Promise<string> {
   try {
-    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`)
+    const r=await fetch(`/api/geocode?lat=${lat}&lon=${lon}`)
+    if(!r.ok) return ''
     const d=await r.json()
-    const city=d.address?.city||d.address?.town||d.address?.village||''
-    const state=d.address?.state||''
-    return city&&state?`${city}, ${state}`:d.display_name?.split(',')[0]??''
+    return d.location ?? ''
   } catch { return '' }
 }
 
@@ -291,8 +294,16 @@ export default function StudioPage(){
 
   const processFiles=useCallback(async(files:FileList,sessionId:string)=>{
     const newPhotoIds:string[]=[]
-    const newPhotos:Photo[]=await Promise.all(
-      Array.from(files).filter(f=>f.type.startsWith('image/')).map(async(f)=>{
+    const imageFiles=Array.from(files).filter(f=>f.type.startsWith('image/'))
+    // Process in bounded batches instead of one giant Promise.all. Decoding EXIF
+    // for hundreds of full-size photos at once spikes memory and fires hundreds
+    // of simultaneous geocode requests; a small concurrency window keeps bulk
+    // uploads smooth and rate-limit-friendly.
+    const CHUNK_SIZE=6
+    const newPhotos:Photo[]=[]
+    for(let start=0;start<imageFiles.length;start+=CHUNK_SIZE){
+      const batch=imageFiles.slice(start,start+CHUNK_SIZE)
+      const processed=await Promise.all(batch.map(async(f)=>{
         const id=Math.random().toString(36).slice(2)
         newPhotoIds.push(id)
         const exif=await readExif(f)
@@ -300,8 +311,9 @@ export default function StudioPage(){
         if(exif.lat!==null&&exif.lon!==null){locationText=await reverseGeocode(exif.lat,exif.lon);hasExifLocation=!!locationText}
         return{id,file:f,url:URL.createObjectURL(f),sessionId,filter:'original' as Filter,
           stamp:{...DEFAULT_STAMP,capturedAt:exif.date,hasExifDate:!!exif.date,hasExifLocation,locationText,showDate:!!exif.date,showLocation:hasExifLocation},size:'4x6'}
-      })
-    )
+      }))
+      newPhotos.push(...processed)
+    }
     setPhotos(prev=>[...prev,...newPhotos])
     setSessions(prev=>prev.map(s=>s.id===sessionId?{...s,photoIds:[...s.photoIds,...newPhotoIds]}:s))
     if(newPhotos.length>0) setActivePhotoId(prev=>prev??newPhotos[0].id)
