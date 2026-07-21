@@ -16,7 +16,7 @@ jobs:
           response=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
-            "${{ secrets.SUPABASE_URL }}/rest/v1/orders?select=id&limit=1")
+           "${{ secrets.SUPABASE_URL }}/rest/v1/")
           echo "HTTP $response"
           if [ "$response" -lt 200 ] || [ "$response" -ge 400 ]; then
             echo "Ping failed with status $response"
