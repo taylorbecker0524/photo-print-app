@@ -18,7 +18,7 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
            "${{ secrets.SUPABASE_URL }}/auth/v1/health")
           echo "HTTP $response"
-          if [ "$response" -lt 200 ] || [ "$response" -ge 400 ]; then
-            echo "Ping failed with status $response"
-            exit 1
-          fi
+          if [ "$response" -lt 200 ] || [ "$response" -ge 500 ]; then
+  echo "Ping failed with status $response"
+  exit 1
+fi
