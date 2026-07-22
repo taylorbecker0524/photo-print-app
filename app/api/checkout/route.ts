@@ -52,14 +52,17 @@ export async function POST(req: NextRequest) {
     )
 
     let shippingCents: number
+    // Default method if the quote call fails; the webhook fulfills with whatever
+    // we record here, so the method we charge for and the method we order always match.
+    let shippingMethod = 'Budget'
     try {
       const quote = await getProdigiShippingQuote({
         items: items.map((i: any) => ({ sku: getSku(i.size), copies: i.quantity })),
         destinationCountryCode: shippingAddress.country,
         finish,
-        shippingMethod: 'Standard',
       })
       shippingCents = quote.shippingCents
+      shippingMethod = quote.method // cheapest available method (usually Budget)
     } catch (quoteErr: any) {
       console.error('[checkout] Prodigi quote failed, using fallback:', quoteErr?.message)
       shippingCents = FALLBACK_US_SHIPPING_CENTS
@@ -71,7 +74,7 @@ export async function POST(req: NextRequest) {
       amount: total,
       currency: 'usd',
       receipt_email: email,
-      metadata: { email, finish },
+      metadata: { email, finish, shippingMethod },
       automatic_payment_methods: { enabled: true },
     })
 

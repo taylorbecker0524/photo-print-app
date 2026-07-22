@@ -42,7 +42,6 @@ export async function POST(req: NextRequest) {
         items: prodigiItems,
         destinationCountryCode,
         finish,
-        shippingMethod: 'Standard',
       })
       return NextResponse.json({
         shippingCents: quote.shippingCents,
