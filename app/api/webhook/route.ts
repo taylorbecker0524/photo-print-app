@@ -97,9 +97,14 @@ export async function POST(req: NextRequest) {
     // (recorded in the PaymentIntent metadata), so we never charge Budget but
     // order Standard. Falls back to Budget for older orders without metadata.
     const shippingMethod = pi.metadata?.shippingMethod || 'Budget'
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.archiveyours.com'
+    const callbackToken = process.env.PRODIGI_CALLBACK_TOKEN
     const prodigiResult = await createProdigiOrder({
       merchantReference: order.id,
       shippingMethod,
+      // Prodigi POSTs order status + tracking updates to this URL as the order
+      // progresses (dispatch, tracking number). Handled by /api/webhook/prodigi.
+      callbackUrl: `${appUrl}/api/webhook/prodigi${callbackToken ? `?token=${encodeURIComponent(callbackToken)}` : ''}`,
       recipient: {
         name: addr.name,
         // Route Prodigi's own order/shipping notifications to OUR inbox, not the

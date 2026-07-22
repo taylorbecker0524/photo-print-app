@@ -35,6 +35,7 @@ function toOrderShippingMethod(quoteMethod: string): ProdigiShippingMethod {
 export type ProdigiOrderPayload = {
   merchantReference: string
   shippingMethod: ProdigiShippingMethod
+  callbackUrl?: string
   recipient: {
     name: string
     address: {
