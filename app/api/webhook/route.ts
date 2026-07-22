@@ -98,7 +98,12 @@ export async function POST(req: NextRequest) {
       shippingMethod: 'Standard',
       recipient: {
         name: addr.name,
-        email: order.email,
+        // Route Prodigi's own order/shipping notifications to OUR inbox, not the
+        // customer's — otherwise customers get confusing Prodigi-branded emails
+        // ("Order received", "Hannah at Prodigi"). The print still ships to the
+        // customer (recipient.address below); only the notification contact
+        // changes. Override the destination with PRODIGI_CONTACT_EMAIL if needed.
+        email: process.env.PRODIGI_CONTACT_EMAIL ?? process.env.ADMIN_EMAIL ?? 'orders@archiveyours.com',
         address: {
           line1: addr.line1,
           // Prodigi rejects optional fields that are present but empty
