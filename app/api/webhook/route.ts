@@ -93,9 +93,13 @@ export async function POST(req: NextRequest) {
     )
 
     const addr = order.shipping_address
+    // Fulfill with the same shipping method we quoted and charged at checkout
+    // (recorded in the PaymentIntent metadata), so we never charge Budget but
+    // order Standard. Falls back to Budget for older orders without metadata.
+    const shippingMethod = pi.metadata?.shippingMethod || 'Budget'
     const prodigiResult = await createProdigiOrder({
       merchantReference: order.id,
-      shippingMethod: 'Standard',
+      shippingMethod,
       recipient: {
         name: addr.name,
         // Route Prodigi's own order/shipping notifications to OUR inbox, not the

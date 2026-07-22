@@ -15,9 +15,26 @@ const SKU_MAP: Record<string, string> = {
 
 export type PhotoFinish = 'lustre' | 'gloss'
 
+export type ProdigiShippingMethod =
+  | 'Budget' | 'Standard' | 'StandardPlus' | 'Express' | 'Overnight'
+
+// Prodigi's quote endpoint reports shipmentMethod in lowercase words
+// (e.g. "budget", "standard plus"); the orders endpoint expects these values.
+const QUOTE_TO_ORDER_METHOD: Record<string, ProdigiShippingMethod> = {
+  budget: 'Budget',
+  standard: 'Standard',
+  standardplus: 'StandardPlus',
+  express: 'Express',
+  overnight: 'Overnight',
+}
+function toOrderShippingMethod(quoteMethod: string): ProdigiShippingMethod {
+  const key = (quoteMethod || '').toLowerCase().replace(/[^a-z]/g, '')
+  return QUOTE_TO_ORDER_METHOD[key] ?? 'Standard'
+}
+
 export type ProdigiOrderPayload = {
   merchantReference: string
-  shippingMethod: 'Budget' | 'Standard' | 'Express' | 'Overnight'
+  shippingMethod: ProdigiShippingMethod
   recipient: {
     name: string
     address: {
@@ -115,13 +132,14 @@ export async function getProdigiShippingQuote({
   items,
   destinationCountryCode,
   finish,
-  shippingMethod = 'Standard',
 }: {
   items: Array<{ sku: string; copies: number }>
   destinationCountryCode: string
   finish: PhotoFinish
-  shippingMethod?: 'Budget' | 'Standard' | 'Express' | 'Overnight'
-}): Promise<{ shippingCents: number; itemsCents: number; currency: string; method: string }> {
+}): Promise<{ shippingCents: number; itemsCents: number; currency: string; method: ProdigiShippingMethod }> {
+  // Omit shippingMethod: Prodigi then returns a quote for EVERY method
+  // (budget, standard, standard plus, express, overnight) and we pick the
+  // cheapest. For multi-print orders this almost always lands on Budget.
   const res = await fetch(`${PRODIGI_URL}/quotes`, {
     method: 'POST',
     headers: {
@@ -129,7 +147,6 @@ export async function getProdigiShippingQuote({
       'X-API-Key': PRODIGI_KEY,
     },
     body: JSON.stringify({
-      shippingMethod,
       destinationCountryCode,
       currencyCode: 'USD',
       items: items.map(i => ({
@@ -157,6 +174,6 @@ export async function getProdigiShippingQuote({
     shippingCents: Math.round(parseFloat(cheapest.costSummary.shipping.amount) * 100),
     itemsCents: Math.round(parseFloat(cheapest.costSummary.items.amount) * 100),
     currency: cheapest.costSummary.shipping.currency,
-    method: cheapest.shipmentMethod,
+    method: toOrderShippingMethod(cheapest.shipmentMethod),
   }
 }
