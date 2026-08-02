@@ -1,22 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
+import { getPricePerPrintCents } from '@/lib/pricing'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const FALLBACK_US_SHIPPING_CENTS = 699
-
-function getPricePerPrint(size: string, totalQty: number): number {
-  const tiers = [
-    { minQty: 100, prices: { '4x6': 29, '5x7': 69, '8x10': 149, 'square-4': 35, 'square-5': 69, 'square-8': 129 } },
-    { minQty: 50,  prices: { '4x6': 39, '5x7': 89, '8x10': 179, 'square-4': 49, 'square-5': 89, 'square-8': 159 } },
-    { minQty: 20,  prices: { '4x6': 59, '5x7': 109, '8x10': 199, 'square-4': 69, 'square-5': 109, 'square-8': 179 } },
-    { minQty: 10,  prices: { '4x6': 79, '5x7': 129, '8x10': 219, 'square-4': 89, 'square-5': 129, 'square-8': 199 } },
-    { minQty: 1,   prices: { '4x6': 99, '5x7': 149, '8x10': 249, 'square-4': 109, 'square-5': 149, 'square-8': 229 } },
-  ]
-  const tier = tiers.find(t => totalQty >= t.minQty) ?? tiers[tiers.length - 1]
-  return (tier.prices as any)[size] ?? 99
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -47,7 +36,7 @@ export async function POST(req: NextRequest) {
 
     const totalQty = items.reduce((s: number, i: any) => s + i.quantity, 0)
     const subtotal = items.reduce(
-      (s: number, i: any) => s + getPricePerPrint(i.size, totalQty) * i.quantity,
+      (s: number, i: any) => s + getPricePerPrintCents(i.size, totalQty) * i.quantity,
       0
     )
 
@@ -86,7 +75,7 @@ export async function POST(req: NextRequest) {
       quantity: item.quantity,
       stamp: item.stamp,
       finish,
-      unit_price_cents: getPricePerPrint(item.size, totalQty),
+      unit_price_cents: getPricePerPrintCents(item.size, totalQty),
     }))
 
     const { error: dbError } = await supabase.from('orders').insert({

@@ -1,6 +1,7 @@
 'use client'
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { getPricePerPrintCents, getNextTier } from '@/lib/pricing'
 
 type Filter = 'original' | 'film' | 'sepia' | 'bw' | 'faded' | 'vivid' | 'cool'
 type StampStyle = 'burn' | 'overlay' | 'none'
@@ -26,7 +27,6 @@ const SIZES = [
   { key: '8x10', label: '8x10"', price: 2.49 }, { key: 'square-4', label: '4x4"', price: 1.09 },
   { key: 'square-5', label: '5x5"', price: 1.49 }, { key: 'square-8', label: '8x8"', price: 2.29 },
 ]
-const BULK = [{ min: 100, mult: 0.29 }, { min: 50, mult: 0.39 }, { min: 20, mult: 0.59 }, { min: 10, mult: 0.79 }, { min: 1, mult: 1 }]
 const FILTERS: { key: Filter; label: string; css: string }[] = [
   { key: 'original', label: 'Original', css: 'none' },
   { key: 'film', label: 'Film', css: 'sepia(0.2) contrast(1.1) saturate(0.9) brightness(0.95)' },
@@ -37,11 +37,9 @@ const FILTERS: { key: Filter; label: string; css: string }[] = [
   { key: 'cool', label: 'Cool', css: 'saturate(0.9) hue-rotate(15deg) brightness(1.02)' },
 ]
 const getFCss = (f: Filter) => FILTERS.find(x => x.key === f)?.css ?? 'none'
-const getPrice = (size: string, qty: number) => {
-  const base = SIZES.find(s => s.key === size)?.price ?? 0.99
-  const tier = BULK.find(t => qty >= t.min) ?? BULK[BULK.length - 1]
-  return +(base * tier.mult).toFixed(2)
-}
+// Per-print price in dollars, from the single source of truth in lib/pricing —
+// so the studio always shows exactly what checkout will charge.
+const getPrice = (size: string, qty: number) => getPricePerPrintCents(size, qty) / 100
 const fmtSession = (d: Date) => d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 
 // FIX 4: classic format is now MM DD YYYY (was DD MM YYYY)
@@ -265,6 +263,7 @@ export default function StudioPage(){
   const previewPhoto=selectedPhotos.length>1?selectedPhotos[previewIndex]:activePhoto
   const totalQty=orderItems.reduce((s,i)=>s+i.quantity,0)
   const orderTotal=orderItems.reduce((s,i)=>s+getPrice(i.size,totalQty)*i.quantity,0)
+  const nextTier = totalQty>0 ? getNextTier(totalQty) : null
   const isMultiSelect = selectedIds.size > 1
 
   useEffect(()=>{
@@ -751,6 +750,11 @@ export default function StudioPage(){
                         {totalQty} prints{finish?` · ${finish} finish`:''} - shipping at checkout
                       </p>
                       <p style={{fontFamily:'Georgia, serif',fontSize:22,color:'#F7F3EE',fontWeight:400}}>${orderTotal.toFixed(2)}<span style={{fontSize:11,opacity:0.55,marginLeft:6}}>+ shipping</span></p>
+                      {nextTier&&(
+                        <p style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#F5A878',letterSpacing:'0.03em',marginTop:6}}>
+                          + Add {nextTier.needed} more print{nextTier.needed>1?'s':''} to unlock a lower price per print
+                        </p>
+                      )}
                     </>
                   )}
                 </div>
