@@ -3,7 +3,12 @@ import { Resend } from 'resend'
 const resend = new Resend(process.env.RESEND_API_KEY)
 const FROM = process.env.EMAIL_FROM ?? 'orders@archiveyours.com'
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'support@archiveyours.com'
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://archiveyours.com'
+// Guard against a mis-set env var (e.g. an email address in NEXT_PUBLIC_APP_URL):
+// only use it when it's actually an http(s) URL, otherwise fall back to the
+// canonical domain so "track your order" links never break.
+const RAW_APP_URL = process.env.NEXT_PUBLIC_APP_URL
+const APP_URL =
+  RAW_APP_URL && /^https?:\/\//.test(RAW_APP_URL) ? RAW_APP_URL : 'https://www.archiveyours.com'
 
 export async function sendOrderConfirmation({
   email,
