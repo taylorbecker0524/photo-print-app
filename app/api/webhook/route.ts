@@ -97,7 +97,12 @@ export async function POST(req: NextRequest) {
     // (recorded in the PaymentIntent metadata), so we never charge Budget but
     // order Standard. Falls back to Budget for older orders without metadata.
     const shippingMethod = pi.metadata?.shippingMethod || 'Budget'
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.archiveyours.com'
+    // Only trust NEXT_PUBLIC_APP_URL if it's a real http(s) URL. A mis-set value
+    // (e.g. an email address) must NOT produce an invalid callbackUrl and block
+    // fulfillment of an already-paid order — fall back to the canonical domain.
+    const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL
+    const appUrl =
+      rawAppUrl && /^https?:\/\//.test(rawAppUrl) ? rawAppUrl : 'https://www.archiveyours.com'
     const callbackToken = process.env.PRODIGI_CALLBACK_TOKEN
     const prodigiResult = await createProdigiOrder({
       merchantReference: order.id,
