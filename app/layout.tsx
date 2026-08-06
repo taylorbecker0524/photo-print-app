@@ -48,9 +48,31 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </nav>
         <main style={{ width: '100%', boxSizing: 'border-box' }}>{children}</main>
         <footer style={{ borderTop: '1px solid rgba(43,42,40,0.08)', padding: '28px 20px', textAlign: 'center', background: '#EFE8DF', marginTop: 60, width: '100%', boxSizing: 'border-box' }}>
-          <p style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: '#8A6F5A', fontStyle: 'italic', marginBottom: 6 }}>Every photo tells a story.</p>
+          <p style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: '#8A6F5A', fontStyle: 'italic', marginBottom: 14 }}>Every photo tells a story.</p>
+          {/* Policy links live in the footer on every page: card processors (Stripe)
+              require Terms, Privacy and a Refund/Shipping policy to be reachable
+              from anywhere on the site before they will activate a live account. */}
+          <nav style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 18px', justifyContent: 'center', marginBottom: 12 }}>
+            {[
+              { href: '/terms', label: 'Terms' },
+              { href: '/privacy', label: 'Privacy' },
+              { href: '/refund-shipping', label: 'Shipping & Refunds' },
+              { href: '/orders', label: 'Track order' },
+            ].map(l => (
+              <a
+                key={l.href}
+                href={l.href}
+                style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: '#8A6F5A', letterSpacing: '0.08em', textTransform: 'uppercase', textDecoration: 'none' }}
+              >
+                {l.label}
+              </a>
+            ))}
+          </nav>
           <p style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: '#8A6F5A', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
             support@archiveyours.com
+          </p>
+          <p style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: 'rgba(138,111,90,0.75)', letterSpacing: '0.06em', marginTop: 8 }}>
+            © {new Date().getFullYear()} Archive Yours
           </p>
         </footer>
       </body>
