@@ -206,7 +206,7 @@ export default function CheckoutPage() {
       <h1 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 40, fontWeight: 400, marginBottom: 8, color: '#2B2A28' }}>Checkout</h1>
       <p style={{ fontSize: 13, color: '#8A6F5A', marginBottom: 40, letterSpacing: '0.04em' }}>Complete your order below</p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 32 }} className="checkout-grid">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
             {['Shipping', 'Payment'].map((s, i) => {
@@ -257,7 +257,7 @@ export default function CheckoutPage() {
                     <p style={{ fontSize: 12, color: '#8A6F5A', marginBottom: 14, lineHeight: 1.5 }}>
                       Choose how your prints feel and look. Both are professional photo paper — this changes the surface only.
                     </p>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }} className="form-grid">
                       <button
                         type="button"
                         onClick={() => setFinish('lustre')}
@@ -297,7 +297,7 @@ export default function CheckoutPage() {
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }} className="form-grid">
                 <div style={{ gridColumn: '1/-1' }}>
                   <label style={labelStyle}>Full name</label>
                   <input required style={inputStyle} value={shipping.name} onChange={e => setShipping(s => ({ ...s, name: e.target.value }))} />
