@@ -34,12 +34,15 @@ body {
 /* Mobile-first studio layout */
 @media (max-width: 768px) {
   .studio-grid { grid-template-columns: 1fr !important; }
+  .checkout-grid { grid-template-columns: 1fr !important; }
   .order-grid { grid-template-columns: repeat(2, 1fr) !important; }
   .size-grid { grid-template-columns: repeat(3, 1fr) !important; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr) !important; }
 }
 
 @media (max-width: 480px) {
   .order-grid { grid-template-columns: 1fr !important; }
+  .form-grid { grid-template-columns: 1fr !important; }
 }
 
 @keyframes fadeUp {
