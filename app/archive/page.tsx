@@ -98,7 +98,7 @@ export default function ArchivePage() {
       </div>
 
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: 'rgba(43,42,40,0.08)', borderRadius: 12, overflow: 'hidden', marginBottom: 28 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: 'rgba(43,42,40,0.08)', borderRadius: 12, overflow: 'hidden', marginBottom: 28 }} className="stat-grid">
         {[
           { num: totalPrints, label: 'prints ordered' },
           { num: orders.length, label: 'orders' },
