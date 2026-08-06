@@ -2,24 +2,17 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { loadStripe } from '@stripe/stripe-js'
+import { getPricePerPrintCents } from '@/lib/pricing'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
 type CartItem = { size: string; quantity: number; stamp: any; fileName: string; photoPath: string }
 type Finish = 'lustre' | 'gloss'
 
-const BULK_TIERS = [
-  { minQty: 100, prices: { '4x6': 0.29, '5x7': 0.69, '8x10': 1.49, 'square-4': 0.35, 'square-5': 0.69, 'square-8': 1.29 } },
-  { minQty: 50,  prices: { '4x6': 0.39, '5x7': 0.89, '8x10': 1.79, 'square-4': 0.49, 'square-5': 0.89, 'square-8': 1.59 } },
-  { minQty: 20,  prices: { '4x6': 0.59, '5x7': 1.09, '8x10': 1.99, 'square-4': 0.69, 'square-5': 1.09, 'square-8': 1.79 } },
-  { minQty: 10,  prices: { '4x6': 0.79, '5x7': 1.29, '8x10': 2.19, 'square-4': 0.89, 'square-5': 1.29, 'square-8': 1.99 } },
-  { minQty: 1,   prices: { '4x6': 0.99, '5x7': 1.49, '8x10': 2.49, 'square-4': 1.09, 'square-5': 1.49, 'square-8': 2.29 } },
-]
-
-function getPrice(size: string, qty: number): number {
-  const tier = BULK_TIERS.find(t => qty >= t.minQty) ?? BULK_TIERS[BULK_TIERS.length - 1]
-  return (tier.prices as any)[size] ?? 0.99
-}
+// Per-print price in dollars, from the single source of truth in lib/pricing —
+// the same module /api/checkout charges from, so what the customer sees here is
+// exactly what Stripe bills.
+const getPrice = (size: string, qty: number) => getPricePerPrintCents(size, qty) / 100
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '10px 14px', fontSize: 14,
