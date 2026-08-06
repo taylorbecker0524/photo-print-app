@@ -117,7 +117,7 @@ export default function ArchivePage() {
         <button onClick={() => router.push('/studio')} style={{ padding: '11px 24px', background: '#2B2A28', color: '#F7F3EE', border: 'none', borderRadius: 8, fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'inherit', cursor: 'pointer' }}>
           + Print new photos
         </button>
-        <button onClick={() => router.push('/studio')} style={{ padding: '11px 24px', background: 'transparent', color: '#2B2A28', border: '1px solid rgba(43,42,40,0.2)', borderRadius: 8, fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'inherit', cursor: 'pointer' }}>
+        <button onClick={() => router.push('/reorder')} style={{ padding: '11px 24px', background: 'transparent', color: '#2B2A28', border: '1px solid rgba(43,42,40,0.2)', borderRadius: 8, fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'inherit', cursor: 'pointer' }}>
           Reorder previous prints
         </button>
       </div>
