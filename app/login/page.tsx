@@ -51,12 +51,7 @@ export default function LoginPage() {
         Continue with Google
       </button>
 
-      <button style={{ width: '100%', padding: '14px 20px', background: '#000', border: 'none', borderRadius: 12, fontSize: 15, color: 'white', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 24 }}>
-        <svg width="18" height="20" viewBox="0 0 814 1000" fill="white"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105-42.3-155.5-127.5C46.7 790.7 0 663 0 541.8c0-207.5 135.4-317.3 268.5-317.3 99.8 0 183 65.7 245.5 65.7 59.2 0 152.2-69.2 271.5-69.2zm-134.2-99.5c-60.7 26.3-115 97.3-115 169.5 0 4.5.6 9.1 1.3 13.6 4.5.6 9.1.6 13 .6 56.7 0 107.3-27.5 139.2-72.5 23.1-31.5 39.5-78.5 39.5-122.5 0-4.5-.6-9.1-1.3-13.6-9.7.3-21.3 2.9-76.7 24.4z"/></svg>
-        Continue with Apple
-      </button>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '24px 0' }}>
         <div style={{ flex: 1, height: 1, background: 'rgba(43,42,40,0.1)' }} />
         <span style={{ fontFamily: 'Courier New, monospace', fontSize: 11, color: '#8A6F5A', letterSpacing: '0.06em' }}>OR</span>
         <div style={{ flex: 1, height: 1, background: 'rgba(43,42,40,0.1)' }} />
