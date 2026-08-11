@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+// Fulfillment signs a URL per photo and then calls Prodigi. On a large order the
+// default 10s serverless budget is not enough, and a killed function cannot run
+// its own catch block — which is precisely how a failure becomes invisible.
+export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
   const { stripe } = await import('@/lib/stripe')
@@ -46,13 +50,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Order not found' }, { status: 200 })
   }
 
-  // Idempotency guard
-  if (order.status === 'paid' || order.status === 'processing' || order.status === 'shipped') {
-    console.log('[webhook] order already processed, skipping', order.id, order.status)
+  // Idempotency guard.
+  //
+  // This keys on prodigi_order_id, NOT on status === 'paid'. An order is marked
+  // 'paid' BEFORE fulfillment is attempted, so if the function dies in between
+  // (timeout, cold start, crash) the catch block never runs and nothing is
+  // recorded. Treating 'paid' as "already processed" then makes every Stripe
+  // retry skip fulfillment permanently: the order is stuck forever with no
+  // error, no alert and no print. An order sitting at 'paid' with no Prodigi id
+  // is one whose fulfillment never finished, and it must be retried.
+  if (order.prodigi_order_id || order.status === 'processing' || order.status === 'shipped') {
+    console.log('[webhook] order already fulfilled, skipping', order.id, order.status)
     return NextResponse.json({ received: true, alreadyProcessed: true })
   }
 
-  await supabase.from('orders').update({ status: 'paid' }).eq('id', order.id)
+  // Leave a breadcrumb before starting. If this function is killed mid-flight the
+  // catch block cannot run, so this note is the only trace a timeout will leave.
+  // It is cleared on success and replaced by the real message on a caught error.
+  await supabase
+    .from('orders')
+    .update({
+      status: 'paid',
+      fulfillment_error: `Fulfillment attempt started ${new Date().toISOString()} and did not complete. If this is the latest state, the attempt was killed before it could report an error.`,
+    })
+    .eq('id', order.id)
 
   // Send the customer's receipt as soon as payment is confirmed — independent of
   // fulfillment. A Prodigi failure must NOT prevent the confirmation email, and
@@ -139,6 +160,7 @@ export async function POST(req: NextRequest) {
       .update({
         status: 'processing',
         prodigi_order_id: prodigiResult.order.id,
+        fulfillment_error: null,
       })
       .eq('id', order.id)
 
