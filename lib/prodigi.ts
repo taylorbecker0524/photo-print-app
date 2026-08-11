@@ -9,8 +9,8 @@ const SKU_MAP: Record<string, string> = {
   '5x7':      'GLOBAL-PHO-5X7',
   '8x10':     'GLOBAL-PHO-8X10',
   'square-4': 'GLOBAL-PHO-4X4',
-  'square-5': 'GLOBAL-PHO-5X5',
-  'square-8': 'GLOBAL-PHO-8X8',
+  'square-5': 'GLOBAL-PHO-5X5-PRO',
+  'square-8': 'GLOBAL-PHO-8X8-PRO',
 }
 
 export type PhotoFinish = 'lustre' | 'gloss'
