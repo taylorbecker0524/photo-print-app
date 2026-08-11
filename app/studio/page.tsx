@@ -1,7 +1,7 @@
 'use client'
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { getPricePerPrintCents, getNextTier } from '@/lib/pricing'
+import { getPricePerPrintCents, getNextTier, MIN_ORDER_QTY } from '@/lib/pricing'
 
 type Filter = 'original' | 'film' | 'sepia' | 'bw' | 'faded' | 'vivid' | 'cool'
 type StampStyle = 'burn' | 'overlay' | 'none'
@@ -264,6 +264,7 @@ export default function StudioPage(){
   const totalQty=orderItems.reduce((s,i)=>s+i.quantity,0)
   const orderTotal=orderItems.reduce((s,i)=>s+getPrice(i.size,totalQty)*i.quantity,0)
   const nextTier = totalQty>0 ? getNextTier(totalQty) : null
+  const belowMinimum = totalQty>0 && totalQty < MIN_ORDER_QTY
   const isMultiSelect = selectedIds.size > 1
 
   useEffect(()=>{
@@ -520,6 +521,11 @@ export default function StudioPage(){
   // Without this, photoPath was a placeholder string and Prodigi got `url: undefined`.
   const goToCheckout=async()=>{
     if(uploadState.active) return
+    // Minimum order: fixed shipping and card fees make smaller orders lose money.
+    if(totalQty < MIN_ORDER_QTY){
+      setUploadState({active:false,current:0,total:0,error:`Orders start at ${MIN_ORDER_QTY} prints — please add ${MIN_ORDER_QTY - totalQty} more.`})
+      return
+    }
     // FIX (Finish): require finish before checkout
     if(!finish){
       setUploadState({active:false,current:0,total:0,error:'Please choose a print finish (lustre or gloss) before continuing'})
@@ -750,16 +756,20 @@ export default function StudioPage(){
                         {totalQty} prints{finish?` · ${finish} finish`:''} - shipping at checkout
                       </p>
                       <p style={{fontFamily:'Georgia, serif',fontSize:22,color:'#F7F3EE',fontWeight:400}}>${orderTotal.toFixed(2)}<span style={{fontSize:11,opacity:0.55,marginLeft:6}}>+ shipping</span></p>
-                      {nextTier&&(
+                      {belowMinimum?(
                         <p style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#F5A878',letterSpacing:'0.03em',marginTop:6}}>
-                          + Add {nextTier.needed} more print{nextTier.needed>1?'s':''} to unlock a lower price per print
+                          + Orders start at {MIN_ORDER_QTY} prints - add {MIN_ORDER_QTY-totalQty} more to check out
+                        </p>
+                      ):nextTier&&(
+                        <p style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#F5A878',letterSpacing:'0.03em',marginTop:6}}>
+                          + Add {nextTier.needed} more print{nextTier.needed>1?'s':''} to reach the {nextTier.minQty}+ price
                         </p>
                       )}
                     </>
                   )}
                 </div>
-                <button onClick={goToCheckout} disabled={uploadState.active||!finish} style={{...C.accent,width:'auto',padding:'13px 24px',fontSize:13,flexShrink:0,opacity:(uploadState.active||!finish)?0.5:1,cursor:(uploadState.active||!finish)?'not-allowed':'pointer'}}>
-                  {uploadState.active?'Uploading…':!finish?'Choose finish':'Checkout'}
+                <button onClick={goToCheckout} disabled={uploadState.active||!finish||belowMinimum} style={{...C.accent,width:'auto',padding:'13px 24px',fontSize:13,flexShrink:0,opacity:(uploadState.active||!finish||belowMinimum)?0.5:1,cursor:(uploadState.active||!finish||belowMinimum)?'not-allowed':'pointer'}}>
+                  {uploadState.active?'Uploading…':!finish?'Choose finish':belowMinimum?`Add ${MIN_ORDER_QTY-totalQty} more`:'Checkout'}
                 </button>
               </div>
             </div>
