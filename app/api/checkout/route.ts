@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
-import { getPricePerPrintCents } from '@/lib/pricing'
+import { getPricePerPrintCents, MIN_ORDER_QTY } from '@/lib/pricing'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -23,6 +23,17 @@ export async function POST(req: NextRequest) {
     if (finish !== 'lustre' && finish !== 'gloss') {
       return NextResponse.json(
         { error: 'Please select a finish (lustre or gloss)' },
+        { status: 400 }
+      )
+    }
+
+    // Enforce the minimum order server-side. The studio blocks this in the UI,
+    // but the UI is not a security boundary — a hand-rolled request must not be
+    // able to create a loss-making order.
+    const requestedQty = items.reduce((s: number, i: any) => s + (Number(i.quantity) || 0), 0)
+    if (requestedQty < MIN_ORDER_QTY) {
+      return NextResponse.json(
+        { error: `Orders start at ${MIN_ORDER_QTY} prints. Please add ${MIN_ORDER_QTY - requestedQty} more before checking out.` },
         { status: 400 }
       )
     }
