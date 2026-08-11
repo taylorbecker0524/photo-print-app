@@ -4,6 +4,16 @@
 // 10 / 25 / 50 / 100 prints. Both the studio (what the customer sees while
 // building an order) and the checkout API (what they're actually charged) import
 // this, so the displayed price always equals the charged price.
+/**
+ * Smallest order we accept, in prints.
+ *
+ * Shipping is a flat cost per parcel and Stripe charges a fixed 30c per
+ * transaction, so both are spread across however many prints are in the box.
+ * Below three prints those fixed costs exceed the margin on the prints
+ * themselves and the order loses money no matter what we charge.
+ */
+export const MIN_ORDER_QTY = 3
+
 export type PriceTier = { minQty: number; prices: Record<string, number> }
 
 export const PRICE_TIERS: PriceTier[] = [
