@@ -1,4 +1,8 @@
 import { Metadata } from 'next'
+import { MIN_ORDER_QTY, PRICE_TIERS } from '@/lib/pricing'
+
+// Ascending list of quantities where the per-print price drops, e.g. [10, 25, 50, 100].
+const TIER_BREAKS = PRICE_TIERS.map(t => t.minQty).filter(q => q > 1).sort((a, b) => a - b)
 import { CONTACT_EMAIL } from '@/lib/contact'
 
 export const metadata: Metadata = {
@@ -48,6 +52,17 @@ export default function TermsPage() {
       </p>
 
       <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 26, fontWeight: 400, marginTop: 32, marginBottom: 12 }}>4. Orders and Payment</h2>
+      <p style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 12 }}>
+        Orders start at a minimum of {MIN_ORDER_QTY} prints.
+      </p>
+      <p style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 12 }}>
+        Prices per print depend on the total number of prints in your order. The
+        price shown in the studio and at checkout is the price you pay, and it
+        updates automatically as you add prints — you do not need a code or a
+        coupon to receive a volume price. Current price breaks begin at{' '}
+        {TIER_BREAKS.join(', ')} prints. Prices are subject to change, but the
+        price shown at the moment you pay is the price that applies to your order.
+      </p>
       <p style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 12 }}>
         When you place an order, you authorize us to charge your payment method for the order total, including product cost, shipping, and any applicable taxes. Payments are processed by Stripe.
       </p>
