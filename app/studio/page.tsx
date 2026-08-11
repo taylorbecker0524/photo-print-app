@@ -23,9 +23,9 @@ type OrderItem = { id: string; photoId: string; url: string; fileName: string; f
 type Session = { id: string; name: string; date: Date; photoIds: string[]; isRenaming: boolean }
 
 const SIZES = [
-  { key: '4x6', label: '4x6"', price: 0.99 }, { key: '5x7', label: '5x7"', price: 1.49 },
-  { key: '8x10', label: '8x10"', price: 2.49 }, { key: 'square-4', label: '4x4"', price: 1.09 },
-  { key: 'square-5', label: '5x5"', price: 1.49 }, { key: 'square-8', label: '8x8"', price: 2.29 },
+  { key: '4x6', label: '4x6"' }, { key: '5x7', label: '5x7"' },
+  { key: '8x10', label: '8x10"' }, { key: 'square-4', label: '4x4"' },
+  { key: 'square-5', label: '5x5"' }, { key: 'square-8', label: '8x8"' },
 ]
 const FILTERS: { key: Filter; label: string; css: string }[] = [
   { key: 'original', label: 'Original', css: 'none' },
