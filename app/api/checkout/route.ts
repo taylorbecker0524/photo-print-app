@@ -68,13 +68,51 @@ export async function POST(req: NextRequest) {
       shippingCents = FALLBACK_US_SHIPPING_CENTS
     }
 
-    const total = subtotal + shippingCents
+    // Sales tax.
+    //
+    // We are registered to collect in Florida, so Stripe Tax decides what is
+    // owed from where the parcel is going. An out-of-state address comes back
+    // zero, which is correct — we have no obligation to collect there.
+    //
+    // If this call fails we charge no tax rather than block the sale. That is a
+    // deliberate trade: an uncollected Florida order costs us ~7.5% out of
+    // pocket, but a checkout that throws costs us the entire order. The failure
+    // is logged loudly so it cannot pass unnoticed.
+    let taxCents = 0
+    let taxCalculationId: string | null = null
+    try {
+      const calc = await stripe.tax.calculations.create({
+        currency: 'usd',
+        line_items: [{ amount: subtotal, reference: 'prints', tax_behavior: 'exclusive' }],
+        shipping_cost: { amount: shippingCents, tax_behavior: 'exclusive' },
+        customer_details: {
+          address: {
+            line1: shippingAddress.line1,
+            city: shippingAddress.city,
+            // The form field is free text, so normalise to the two-letter code
+            // Stripe expects. A malformed state means no tax, not a crash.
+            state: String(shippingAddress.state ?? '').trim().toUpperCase(),
+            postal_code: String(shippingAddress.zip ?? shippingAddress.postalCode ?? '').trim(),
+            country: 'US',
+          },
+          address_source: 'shipping',
+        },
+      })
+      taxCents = calc.tax_amount_exclusive
+      taxCalculationId = calc.id
+    } catch (taxErr: any) {
+      console.error('[checkout] Stripe Tax failed, charging no tax:', taxErr?.message)
+    }
+
+    const total = subtotal + shippingCents + taxCents
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: total,
       currency: 'usd',
       receipt_email: email,
-      metadata: { email, finish, shippingMethod },
+      // The webhook needs the calculation id to record the tax transaction
+      // once payment succeeds; carrying it on the intent keeps the two in step.
+      metadata: { email, finish, shippingMethod, taxCalculationId: taxCalculationId ?? '' },
       automatic_payment_methods: { enabled: true },
     })
 
@@ -95,6 +133,8 @@ export async function POST(req: NextRequest) {
       status: 'pending',
       stripe_payment_intent_id: paymentIntent.id,
       total_cents: total,
+      tax_cents: taxCents,
+      tax_calculation_id: taxCalculationId,
       items: orderItems,
       shipping_address: shippingAddress,
     })
@@ -103,7 +143,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       clientSecret: paymentIntent.client_secret,
       orderId,
-      breakdown: { subtotal, shipping: shippingCents, total },
+      breakdown: { subtotal, shipping: shippingCents, tax: taxCents, total },
     })
   } catch (err) {
     console.error('[checkout]', err)
