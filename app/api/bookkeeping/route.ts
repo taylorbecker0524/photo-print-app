@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
   const header = [
     'date', 'order_id', 'status', 'customer_email', 'ship_state',
     'prints', 'sizes',
-    'gross_charged', 'product_revenue', 'shipping_charged',
+    'gross_charged', 'tax_collected', 'product_revenue', 'shipping_charged',
     'est_product_cost', 'est_shipping_cost', 'est_prodigi_tax', 'est_stripe_fee',
     'est_total_cost', 'est_net', 'est_margin_pct',
     'stripe_payment_intent', 'prodigi_order_id', 'tracking_number',
@@ -77,6 +77,11 @@ export async function GET(req: NextRequest) {
       .join('; ')
 
     const gross = Number(o.total_cents) || 0
+    // Sales tax is money held on behalf of Florida — never ours. It is inside
+    // total_cents, so it has to come out before shipping is derived and must
+    // never be counted as revenue or it silently inflates every margin here.
+    const taxCollected = Number(o.tax_cents) || 0
+    const revenue = gross - taxCollected
     // Shipping isn't stored separately, but total = items + shipping, and each
     // item carries the unit price it was actually charged at. Subtracting gives
     // the shipping the customer paid without needing a schema change.
@@ -84,7 +89,7 @@ export async function GET(req: NextRequest) {
       (sum, i) => sum + (Number(i?.unit_price_cents) || 0) * (Number(i?.quantity) || 0),
       0
     )
-    const shippingCharged = Math.max(0, gross - productRevenue)
+    const shippingCharged = Math.max(0, revenue - productRevenue)
 
     const productCost = estimateProductCostCents(items)
     // We only pay Prodigi once the order is actually placed with them.
@@ -94,8 +99,9 @@ export async function GET(req: NextRequest) {
     const stripeFee = estimateStripeFeeCents(gross)
 
     const totalCost = (reachedProdigi ? productCost : 0) + shippingCost + prodigiTax + stripeFee
-    const net = gross - totalCost
-    const marginPct = gross > 0 ? ((net / gross) * 100).toFixed(1) : ''
+    const net = revenue - totalCost
+    // Measured against what we keep, not what we charged.
+    const marginPct = revenue > 0 ? ((net / revenue) * 100).toFixed(1) : ''
 
     return [
       o.created_at ? String(o.created_at).slice(0, 10) : '',
@@ -106,6 +112,7 @@ export async function GET(req: NextRequest) {
       prints,
       sizes,
       money(gross),
+      money(taxCollected),
       money(productRevenue),
       money(shippingCharged),
       money(reachedProdigi ? productCost : 0),
