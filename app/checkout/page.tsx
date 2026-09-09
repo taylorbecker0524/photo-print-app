@@ -35,6 +35,10 @@ export default function CheckoutPage() {
   const stripeStateRef = useRef<{ stripe: any; elements: any } | null>(null)
   const clientSecretRef = useRef<string | null>(null)
   const [shippingCents, setShippingCents] = useState<number | null>(null)
+  // Sales tax is worked out server-side from the shipping address, so it is
+  // unknown until /api/checkout answers. null means "not known yet" and renders
+  // nothing, which is honest; 0 means "known, and none is owed".
+  const [taxCents, setTaxCents] = useState<number | null>(null)
   // FIX: finish required, no default — customer must choose
   const [finish, setFinish] = useState<Finish | null>(null)
   const [shipping, setShipping] = useState({
@@ -65,7 +69,10 @@ export default function CheckoutPage() {
   const totalQty = cart.reduce((s, i) => s + i.quantity, 0)
   const subtotal = cart.reduce((s, i) => s + getPrice(i.size, totalQty) * i.quantity, 0)
   const shippingDollars = shippingCents !== null ? shippingCents / 100 : null
-  const total = shippingDollars !== null ? subtotal + shippingDollars : subtotal
+  const taxDollars = taxCents !== null ? taxCents / 100 : null
+  // Must match what /api/checkout charged, or the Pay button lies about the amount.
+  const total =
+    shippingDollars !== null ? subtotal + shippingDollars + (taxDollars ?? 0) : subtotal
 
   const handleShippingSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -127,6 +134,9 @@ export default function CheckoutPage() {
       const data = await res.json()
       setOrderId(data.orderId)
       clientSecretRef.current = data.clientSecret
+      if (typeof data.breakdown?.tax === 'number') {
+        setTaxCents(data.breakdown.tax)
+      }
       if (typeof data.breakdown?.shipping === 'number') {
         setShippingCents(data.breakdown.shipping)
       }
@@ -402,9 +412,15 @@ export default function CheckoutPage() {
               <span>
                 {shippingDollars === null
                   ? <span style={{ fontStyle: 'italic', fontSize: 11 }}>Calculated at next step</span>
-                  : `$${shippingDollars.toFixed(2)}`}
+                  : `${shippingDollars.toFixed(2)}`}
               </span>
             </div>
+            {taxDollars !== null && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#8A6F5A' }}>
+                <span>Sales tax</span>
+                <span>${taxDollars.toFixed(2)}</span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 600, paddingTop: 8, borderTop: '1px solid rgba(43,42,40,0.1)', marginTop: 4 }}>
               <span>Total</span>
               <span>
