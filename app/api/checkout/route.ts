@@ -84,7 +84,22 @@ export async function POST(req: NextRequest) {
       const calc = await stripe.tax.calculations.create({
         currency: 'usd',
         line_items: [{ amount: subtotal, reference: 'prints', tax_behavior: 'exclusive' }],
-        shipping_cost: { amount: shippingCents, tax_behavior: 'exclusive' },
+        shipping_cost: {
+          amount: shippingCents,
+          tax_behavior: 'exclusive',
+          // Taxed as part of the sale, not as exempt delivery.
+          //
+          // Florida exempts a separately stated delivery charge only when the
+          // customer could have avoided it — by collecting the goods themselves
+          // or arranging their own carrier. We offer no pickup, so the charge is
+          // unavoidable and forms part of the sales price.
+          //
+          // Under-collecting is the expensive mistake: it surfaces at audit and
+          // comes out of our pocket, because we cannot re-invoice past customers
+          // for it. Over-collecting is remitted to the state and costs the
+          // customer about 50c. We take the cheap error deliberately.
+          tax_code: 'txcd_99999999',
+        },
         customer_details: {
           address: {
             line1: shippingAddress.line1,
