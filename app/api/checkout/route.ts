@@ -101,7 +101,8 @@ export async function POST(req: NextRequest) {
         // instead is rejected by Stripe and silently yields zero tax.
         line_items: [
           { amount: subtotal, reference: 'prints', tax_behavior: 'exclusive' },
-          { amount: shippingCents, reference: 'shipping', tax_behavior: 'exclusive' },
+          // 'shipping' is a reserved reference in Stripe Tax; 'delivery' is not.
+          { amount: shippingCents, reference: 'delivery', tax_behavior: 'exclusive' },
         ],
         customer_details: {
           address: {
