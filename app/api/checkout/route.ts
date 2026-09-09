@@ -83,23 +83,26 @@ export async function POST(req: NextRequest) {
     try {
       const calc = await stripe.tax.calculations.create({
         currency: 'usd',
-        line_items: [{ amount: subtotal, reference: 'prints', tax_behavior: 'exclusive' }],
-        shipping_cost: {
-          amount: shippingCents,
-          tax_behavior: 'exclusive',
-          // Taxed as part of the sale, not as exempt delivery.
-          //
-          // Florida exempts a separately stated delivery charge only when the
-          // customer could have avoided it — by collecting the goods themselves
-          // or arranging their own carrier. We offer no pickup, so the charge is
-          // unavoidable and forms part of the sales price.
-          //
-          // Under-collecting is the expensive mistake: it surfaces at audit and
-          // comes out of our pocket, because we cannot re-invoice past customers
-          // for it. Over-collecting is remitted to the state and costs the
-          // customer about 50c. We take the cheap error deliberately.
-          tax_code: 'txcd_99999999',
-        },
+        // Delivery is billed as a line item, not as shipping_cost, so it is
+        // taxed exactly like the prints it delivers.
+        //
+        // Florida exempts a separately stated delivery charge only when the
+        // customer could have avoided it — by collecting the goods or arranging
+        // their own carrier. We offer no pickup, so the charge is unavoidable
+        // and forms part of the sales price.
+        //
+        // Under-collecting is the expensive mistake: it surfaces at audit and
+        // comes out of our pocket, because past customers cannot be re-invoiced
+        // for it. Over-collecting is simply remitted to the state and costs the
+        // customer about 50c. We take the cheap error on purpose.
+        //
+        // Neither line sets a tax_code, so both inherit the account preset
+        // (General - Tangible Goods). Setting a goods code on shipping_cost
+        // instead is rejected by Stripe and silently yields zero tax.
+        line_items: [
+          { amount: subtotal, reference: 'prints', tax_behavior: 'exclusive' },
+          { amount: shippingCents, reference: 'shipping', tax_behavior: 'exclusive' },
+        ],
         customer_details: {
           address: {
             line1: shippingAddress.line1,
