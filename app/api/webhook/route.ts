@@ -64,6 +64,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true, alreadyProcessed: true })
   }
 
+  // Record the sales tax collected on this order so it appears in Stripe's tax
+  // reporting when the Florida return is due. Deliberately before fulfillment:
+  // the customer has paid and the tax is already owed, so a printing failure
+  // downstream must not lose the tax record.
+  //
+  // Never fails the webhook. The amount is stored on the order either way, so
+  // the worst case is a report that needs reconciling by hand — not a lost
+  // order or a retry storm.
+  if (order.tax_calculation_id) {
+    try {
+      await stripe.tax.transactions.createFromCalculation({
+        calculation: order.tax_calculation_id,
+        reference: order.id,
+      })
+    } catch (taxErr: any) {
+      console.error('[webhook] tax transaction failed', order.id, taxErr?.message)
+    }
+  }
+
   // Leave a breadcrumb before starting. If this function is killed mid-flight the
   // catch block cannot run, so this note is the only trace a timeout will leave.
   // It is cleared on success and replaced by the real message on a caught error.
