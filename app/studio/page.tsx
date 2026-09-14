@@ -582,6 +582,10 @@ export default function StudioPage(){
         <p style={{fontSize:13,color:'#8A6F5A',fontStyle:'italic'}}>Create a free archive to save your photos and easily track orders</p>
         <a href="/login" style={{fontFamily:'Courier New, monospace',fontSize:10,color:'#D97A43',textDecoration:'none',letterSpacing:'0.06em',textTransform:'uppercase',whiteSpace:'nowrap'}}>Sign in</a>
       </div>
+      {/* Most photos that arrive via text or social media have been recompressed,
+          which strips the date and GPS we stamp with. Say so before they upload,
+          rather than letting them discover it on a printed photo. */}
+      <p style={{ fontSize: 12, color: '#8A6F5A', lineHeight: 1.5, margin: '0 0 10px' }}>Photos sent by text or downloaded from social media usually lose their date and location. For the best results, upload the original from your photo library.</p>
       <div onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();handleInitialFiles(e.dataTransfer.files)}} onClick={()=>fileInputRef.current?.click()}
         style={{border:'1.5px dashed rgba(43,42,40,0.2)',borderRadius:20,background:'#EFE8DF',padding:'56px 24px',textAlign:'center',cursor:'pointer'}}>
         <input ref={fileInputRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>handleInitialFiles(e.target.files)}/>
@@ -884,7 +888,7 @@ export default function StudioPage(){
                       <input style={{...C.input,fontSize:13,padding:'8px 10px'}} placeholder="e.g. Tampa, FL"
                         value={activePhoto.stamp.locationText} onChange={e=>updateStamp(activePhoto.id,{locationText:e.target.value})}/>
                       {!activePhoto.stamp.locationText&&(
-                        <button onClick={detectLocation} style={{background:'none',border:'none',cursor:'pointer',fontSize:12,color:'#D97A43',textDecoration:'underline',padding:'4px 0',fontFamily:'inherit'}}>Detect my location</button>
+                        <button onClick={detectLocation} style={{background:'none',border:'none',cursor:'pointer',fontSize:12,color:'#D97A43',textDecoration:'underline',padding:'4px 0',fontFamily:'inherit'}}>Use my current location</button>
                       )}
                     </div>
                     <Toggle checked={activePhoto.stamp.showLocation&&!!activePhoto.stamp.locationText} onChange={()=>updateStamp(activePhoto.id,{showLocation:!activePhoto.stamp.showLocation})}/>
@@ -1060,7 +1064,7 @@ export default function StudioPage(){
                       <input style={{...C.input,fontSize:13,padding:'8px 10px'}} placeholder="Type to apply to all selected"
                         value={bulkLocationText}
                         onChange={e=>{setBulkLocationText(e.target.value); applyBulkStamp({locationText:e.target.value,showLocation:!!e.target.value})}}/>
-                      <button onClick={detectBulkLocation} style={{background:'none',border:'none',cursor:'pointer',fontSize:12,color:'#D97A43',textDecoration:'underline',padding:'4px 0',fontFamily:'inherit'}}>Detect my location</button>
+                      <button onClick={detectBulkLocation} style={{background:'none',border:'none',cursor:'pointer',fontSize:12,color:'#D97A43',textDecoration:'underline',padding:'4px 0',fontFamily:'inherit'}}>Use my current location</button>
                     </div>
                     <Toggle checked={bulkSharedShowLocation===true} onChange={()=>applyBulkStamp({showLocation:!(bulkSharedShowLocation===true)})}/>
                   </div>
