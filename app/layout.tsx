@@ -54,6 +54,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               from anywhere on the site before they will activate a live account. */}
           <nav style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 18px', justifyContent: 'center', marginBottom: 12 }}>
             {[
+              { href: '/faq', label: 'FAQ' },
               { href: '/terms', label: 'Terms' },
               { href: '/privacy', label: 'Privacy' },
               { href: '/refund-shipping', label: 'Shipping & Refunds' },
