@@ -18,7 +18,7 @@ type StampConfig = {
   stampLocation: StampLocation
   stampFont: StampFont
 }
-type Photo = { id: string; file: File; url: string; sessionId: string; filter: Filter; stamp: StampConfig; size: string }
+type Photo = {width?:number;height?:number; id: string; file: File; url: string; sessionId: string; filter: Filter; stamp: StampConfig; size: string }
 type OrderItem = { id: string; photoId: string; url: string; fileName: string; filter: Filter; stamp: StampConfig; size: string; quantity: number }
 type Session = { id: string; name: string; date: Date; photoIds: string[]; isRenaming: boolean }
 
@@ -53,6 +53,61 @@ const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('en-US',{hour:
 
 // FIX 17a: effective date = override if set, else original capturedAt
 const effectiveCapturedAt = (s:StampConfig): string | null => s.capturedAtOverride ?? s.capturedAt
+
+/**
+ * Smallest pixel dimensions we will print a size at without saying something:
+ * the short and long edge at 150 DPI. Above that, softness is theoretical;
+ * below it, it is visible in a print you are holding.
+ *
+ * This drives a warning and never a block. A slightly soft print of a photo
+ * from 1998 may be exactly what someone wants, and they know that better than
+ * we do. The job here is to make it a choice rather than a surprise that
+ * arrives in the post.
+ */
+const MIN_PRINT_PIXELS:Record<string,{short:number;long:number}>={
+  "4x6":{short:600,long:900},
+  "5x7":{short:750,long:1050},
+  "8x10":{short:1200,long:1500},
+  "square-4":{short:600,long:600},
+  "square-5":{short:750,long:750},
+  "square-8":{short:1200,long:1200},
+}
+
+/**
+ * Decode the file to get its true dimensions. We deliberately do not trust the
+ * EXIF width/height: a photo that has been through a messaging app often keeps
+ * the dimensions it had before it was shrunk, which is precisely the case we
+ * are trying to catch.
+ *
+ * Returns null if the image cannot be decoded (some HEIC files in some
+ * browsers). Null means no warning — failing open is right here, because a
+ * false alarm costs us a sale and a missed one costs a reprint.
+ */
+async function readDimensions(file:File):Promise<{w:number;h:number}|null>{
+  try{
+    if(typeof createImageBitmap==="function"){
+      const bmp=await createImageBitmap(file)
+      const out={w:bmp.width,h:bmp.height}
+      if(typeof (bmp as any).close==="function")(bmp as any).close()
+      return out
+    }
+  }catch{}
+  try{
+    return await new Promise(resolve=>{
+      const img=new Image()
+      const u=URL.createObjectURL(file)
+      img.onload=()=>{resolve({w:img.naturalWidth,h:img.naturalHeight});URL.revokeObjectURL(u)}
+      img.onerror=()=>{resolve(null);URL.revokeObjectURL(u)}
+      img.src=u
+    })
+  }catch{return null}
+}
+
+function isTooSmallForPrint(size:string,w?:number,h?:number):boolean{
+  const need=MIN_PRINT_PIXELS[size]
+  if(!need||!w||!h)return false
+  return Math.min(w,h)<need.short||Math.max(w,h)<need.long
+}
 
 async function readExif(file: File): Promise<{ date: string | null; lat: number | null; lon: number | null }> {
   try {
@@ -265,6 +320,10 @@ export default function StudioPage(){
   const orderTotal=orderItems.reduce((s,i)=>s+getPrice(i.size,totalQty)*i.quantity,0)
   const nextTier = totalQty>0 ? getNextTier(totalQty) : null
   const belowMinimum = totalQty>0 && totalQty < MIN_ORDER_QTY
+  // Photos whose real pixel dimensions fall below roughly 150 DPI at the size
+  // chosen. Counted from orderItems because that is what actually gets printed,
+  // and looked up against photos for the dimensions we measured at upload.
+  const softCount=orderItems.filter(i=>{const p=photos.find(ph=>ph.id===i.photoId);return p?isTooSmallForPrint(i.size,p.width,p.height):false}).length
   const isMultiSelect = selectedIds.size > 1
 
   useEffect(()=>{
@@ -307,9 +366,10 @@ export default function StudioPage(){
         const id=Math.random().toString(36).slice(2)
         newPhotoIds.push(id)
         const exif=await readExif(f)
+        const dim=await readDimensions(f)
         let locationText='',hasExifLocation=false
         if(exif.lat!==null&&exif.lon!==null){locationText=await reverseGeocode(exif.lat,exif.lon);hasExifLocation=!!locationText}
-        return{id,file:f,url:URL.createObjectURL(f),sessionId,filter:'original' as Filter,
+        return{width:dim?.w,height:dim?.h,id,file:f,url:URL.createObjectURL(f),sessionId,filter:'original' as Filter,
           stamp:{...DEFAULT_STAMP,capturedAt:exif.date,hasExifDate:!!exif.date,hasExifLocation,locationText,showDate:!!exif.date,showLocation:hasExifLocation},size:'4x6'}
       }))
       newPhotos.push(...processed)
@@ -767,6 +827,11 @@ export default function StudioPage(){
                       ):nextTier&&(
                         <p style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#F5A878',letterSpacing:'0.03em',marginTop:6}}>
                           + Add {nextTier.needed} more print{nextTier.needed>1?'s':''} to reach the {nextTier.minQty}+ price
+                        </p>
+                      )}
+                      {softCount>0&&(
+                        <p style={{ fontSize: 11, color: "#B3402C", margin: "4px 0 0", lineHeight: 1.45 }}>
+                          {softCount===1?"1 photo may look soft":softCount+" photos may look soft"} at the size chosen. They will still print, but a smaller size will be sharper.
                         </p>
                       )}
                     </>
