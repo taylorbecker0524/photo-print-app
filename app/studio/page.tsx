@@ -64,13 +64,13 @@ const effectiveCapturedAt = (s:StampConfig): string | null => s.capturedAtOverri
  * we do. The job here is to make it a choice rather than a surprise that
  * arrives in the post.
  */
-const MIN_PRINT_PIXELS:Record<string,{short:number;long:number}>={
-  "4x6":{short:600,long:900},
-  "5x7":{short:750,long:1050},
-  "8x10":{short:1200,long:1500},
-  "square-4":{short:600,long:600},
-  "square-5":{short:750,long:750},
-  "square-8":{short:1200,long:1200},
+const MIN_PRINT_PIXELS:Record<string,{short:number;long:number;label:string}>={
+  "4x6":{short:600,long:900,label:"4x6"},
+  "5x7":{short:750,long:1050,label:"5x7"},
+  "8x10":{short:1200,long:1500,label:"8x10"},
+  "square-4":{short:600,long:600,label:"4x4"},
+  "square-5":{short:750,long:750,label:"5x5"},
+  "square-8":{short:1200,long:1200,label:"8x8"},
 }
 
 /**
@@ -108,6 +108,28 @@ function isTooSmallForPrint(size:string,w?:number,h?:number):boolean{
   if(!need||!w||!h)return false
   return Math.min(w,h)<need.short||Math.max(w,h)<need.long
 }
+/**
+ * Turn a measured photo into the sentence a customer can act on.
+ *
+ * Naming a size that WOULD be sharp is the part that matters. The big labs
+ * tell you there is a problem and leave you to work out the fix; saying
+ * "it will look sharp at 4x6" turns a dead end into one click.
+ */
+function resolutionNote(size:string,w?:number,h?:number):string|null{
+  if(!w||!h||!isTooSmallForPrint(size,w,h))return null
+  const need=MIN_PRINT_PIXELS[size]
+  const label=need?need.label:size
+  // Largest first, so we suggest the biggest size that still prints sharp.
+  const fits=["8x10","square-8","5x7","square-5","4x6","square-4"].find(k=>!isTooSmallForPrint(k,w,h))
+  const base="Low resolution - this photo is "+w+" x "+h+" and may print blurry at "+label+"."
+  return fits?base+" It will look sharp at "+MIN_PRINT_PIXELS[fits].label+".":base
+}
+
+function itemResolutionNote(item:OrderItem,all:Photo[]):string|null{
+  const ph=all.find(p=>p.id===item.photoId)
+  return ph?resolutionNote(item.size,ph.width,ph.height):null
+}
+
 
 async function readExif(file: File): Promise<{ date: string | null; lat: number | null; lon: number | null }> {
   try {
@@ -725,6 +747,9 @@ export default function StudioPage(){
                           <img src={photo.url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
                         </div>
                         {inOrder>0&&<div style={{position:'absolute',top:-6,right:-6,width:22,height:22,background:'#D97A43',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'white',border:'2px solid #F7F3EE',zIndex:10}}>{inOrder}</div>}
+                        {isTooSmallForPrint(photo.size,photo.width,photo.height)&&(
+                          <div title="Low resolution - may print blurry at this size" style={{ position: "absolute", bottom: 6, right: 6, width: 19, height: 19, borderRadius: "50%", background: "#E8A33D", color: "#3A2A10", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, boxShadow: "0 1px 3px rgba(0,0,0,.3)" }}>!</div>
+                        )}
                       </div>
                     )
                   })}
@@ -788,6 +813,12 @@ export default function StudioPage(){
                         style={{...C.select,fontSize:12,padding:'6px 8px',marginBottom:8}}>
                         {SIZES.map(s=><option key={s.key} value={s.key}>{s.label} - ${getPrice(s.key,totalQty).toFixed(2)}/ea</option>)}
                       </select>
+                      {(()=>{
+                        const n=itemResolutionNote(item,photos)
+                        return n?(
+                          <div style={{ fontSize: 11, color: "#8A5A12", background: "#FAEEDA", border: "1px solid rgba(217,122,67,.3)", borderRadius: 8, padding: "6px 8px", marginTop: 6, lineHeight: 1.4 }}>{n}</div>
+                        ):null
+                      })()}
                       <StampBullets stamp={item.stamp} filter={item.filter}/>
                       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                         <div style={{display:'flex',alignItems:'center',gap:10}}>
@@ -830,7 +861,7 @@ export default function StudioPage(){
                         </p>
                       )}
                       {softCount>0&&(
-                        <p style={{ fontSize: 11, color: "#B3402C", margin: "4px 0 0", lineHeight: 1.45 }}>
+                        <p style={{ fontSize: 11, color: "#E8A33D", margin: "4px 0 0", lineHeight: 1.45 }}>
                           {softCount===1?"1 photo may look soft":softCount+" photos may look soft"} at the size chosen. They will still print, but a smaller size will be sharper.
                         </p>
                       )}
