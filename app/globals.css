@@ -33,8 +33,11 @@ body {
 
 /* Mobile-first studio layout */
 @media (max-width: 768px) {
-  .studio-grid { grid-template-columns: 1fr !important; }
-  .checkout-grid { grid-template-columns: 1fr !important; }
+  /* A bare 1fr column still sizes to its widest child, because grid items
+     default to min-width:auto. That is what let the order strip push the whole
+     studio page wider than the phone and shrink everything to fit. */
+  .studio-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .checkout-grid { grid-template-columns: minmax(0, 1fr) !important; }
   .order-grid { grid-template-columns: repeat(2, 1fr) !important; }
   .size-grid { grid-template-columns: repeat(3, 1fr) !important; }
   .stat-grid { grid-template-columns: repeat(2, 1fr) !important; }
