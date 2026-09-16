@@ -1,7 +1,9 @@
 'use client'
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { getPricePerPrintCents, getNextTier, MIN_ORDER_QTY } from '@/lib/pricing'
+import { getPricePerPrintCents, getNextTier, MIN_ORDER_QTY, SHIPPING_FLAT_CENTS, formatCents } from '@/lib/pricing'
+import { putPreview, getPreviews, prunePreviews } from '@/lib/photoStore'
+import { setWithTTL, getWithTTL, clearStored } from '@/lib/storage'
 
 type Filter = 'original' | 'film' | 'sepia' | 'bw' | 'faded' | 'vivid' | 'cool'
 type StampStyle = 'burn' | 'overlay' | 'none'
@@ -18,9 +20,22 @@ type StampConfig = {
   stampLocation: StampLocation
   stampFont: StampFont
 }
-type Photo = {width?:number;height?:number; id: string; file: File; url: string; sessionId: string; filter: Filter; stamp: StampConfig; size: string }
+// `file` is absent on a photo restored after leaving the page: the browser will
+// not hand a File back to us. Such a photo can still be shown and re-ordered as
+// long as it was uploaded before, which `uploadedPath` records. `fileName` is
+// kept separately because it has to outlive the File.
+type Photo = {width?:number;height?:number; id: string; file?: File; fileName: string; uploadedPath?: string; url: string; sessionId: string; filter: Filter; stamp: StampConfig; size: string }
 type OrderItem = { id: string; photoId: string; url: string; fileName: string; filter: Filter; stamp: StampConfig; size: string; quantity: number }
 type Session = { id: string; name: string; date: Date; photoIds: string[]; isRenaming: boolean }
+
+/** What we write to localStorage so the studio can rebuild itself. */
+const SNAPSHOT_KEY = 'archive-studio'
+type StudioSnapshot = {
+  photos: Array<Omit<Photo,'file'|'url'>>
+  sessions: Array<Omit<Session,'isRenaming'|'date'> & { date: string }>
+  orderItems: Array<Omit<OrderItem,'url'>>
+  finish: 'lustre' | 'gloss' | null
+}
 
 const SIZES = [
   { key: '4x6', label: '4x6"' }, { key: '5x7', label: '5x7"' },
@@ -39,7 +54,8 @@ const FILTERS: { key: Filter; label: string; css: string }[] = [
 const getFCss = (f: Filter) => FILTERS.find(x => x.key === f)?.css ?? 'none'
 // Per-print price in dollars, from the single source of truth in lib/pricing —
 // so the studio always shows exactly what checkout will charge.
-const getPrice = (size: string, qty: number) => getPricePerPrintCents(size, qty) / 100
+// Money stays in whole cents until it is printed, so displayed lines always
+// add up to the displayed total.
 const fmtSession = (d: Date) => d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 
 // FIX 4: classic format is now MM DD YYYY (was DD MM YYYY)
@@ -83,24 +99,73 @@ const MIN_PRINT_PIXELS:Record<string,{short:number;long:number;label:string}>={
  * browsers). Null means no warning — failing open is right here, because a
  * false alarm costs us a sale and a missed one costs a reprint.
  */
-async function readDimensions(file:File):Promise<{w:number;h:number}|null>{
+// Longest edge of the on-screen copy we keep for every photo.
+//
+// The grid used to render the original file straight from a blob URL. A phone
+// photo is around twelve megapixels, and the browser decodes it at full size
+// however small the thumbnail is drawn — so seventeen photos meant seventeen
+// full decodes held at once. iOS Safari responds by throwing them away, which
+// is why photos appeared as blank tiles, including one that was already in the
+// order. A 1000px copy decodes to about three megabytes instead of fifty, and
+// is still sharper than the largest place we display it.
+//
+// The original File is kept and remains what gets printed. Only the screen copy
+// is small; a File is a handle to bytes on disk, not pixels in memory.
+const PREVIEW_MAX_EDGE = 1000
+const PREVIEW_QUALITY = 0.8
+
+type Prepared = { w?: number; h?: number; url: string; isPreview: boolean; blob?: Blob }
+
+/**
+ * Decode a photo once and return both its true pixel dimensions and a small
+ * on-screen copy. Doing this in a single decode also halves the work of an
+ * import, which used to decode every file twice.
+ *
+ * Falls back to the original file if anything here fails: a heavier preview is
+ * far better than a missing photo.
+ */
+async function preparePhoto(file:File):Promise<Prepared>{
+  const fallback=():Prepared=>({url:URL.createObjectURL(file),isPreview:false})
+  let bmp:ImageBitmap
   try{
-    if(typeof createImageBitmap==="function"){
-      const bmp=await createImageBitmap(file)
-      const out={w:bmp.width,h:bmp.height}
-      if(typeof (bmp as any).close==="function")(bmp as any).close()
-      return out
-    }
-  }catch{}
+    if(typeof createImageBitmap!=="function") return await measureOnly(file)
+    bmp=await createImageBitmap(file,{imageOrientation:'from-image'} as any)
+  }catch{
+    try{ bmp=await createImageBitmap(file) }catch{ return await measureOnly(file) }
+  }
+  const w=bmp.width,h=bmp.height
   try{
-    return await new Promise(resolve=>{
+    const longest=Math.max(w,h)
+    const scale=longest>PREVIEW_MAX_EDGE?PREVIEW_MAX_EDGE/longest:1
+    const canvas=document.createElement('canvas')
+    canvas.width=Math.max(1,Math.round(w*scale))
+    canvas.height=Math.max(1,Math.round(h*scale))
+    const ctx=canvas.getContext('2d')
+    if(!ctx) throw new Error('no 2d context')
+    ctx.drawImage(bmp,0,0,canvas.width,canvas.height)
+    const blob=await new Promise<Blob|null>(res=>canvas.toBlob(res,'image/jpeg',PREVIEW_QUALITY))
+    if(!blob) throw new Error('encode failed')
+    return {w,h,url:URL.createObjectURL(blob),isPreview:true,blob}
+  }catch{
+    // We still measured it, so keep the dimensions even though the small copy failed.
+    return {w,h,...fallback()}
+  }finally{
+    if(typeof (bmp as any).close==="function")(bmp as any).close()
+  }
+}
+
+/** Last resort for browsers without createImageBitmap: measure, display the original. */
+async function measureOnly(file:File):Promise<Prepared>{
+  const url=URL.createObjectURL(file)
+  try{
+    const dims=await new Promise<{w:number;h:number}|null>(resolve=>{
       const img=new Image()
-      const u=URL.createObjectURL(file)
-      img.onload=()=>{resolve({w:img.naturalWidth,h:img.naturalHeight});URL.revokeObjectURL(u)}
-      img.onerror=()=>{resolve(null);URL.revokeObjectURL(u)}
-      img.src=u
+      img.onload=()=>resolve({w:img.naturalWidth,h:img.naturalHeight})
+      img.onerror=()=>resolve(null)
+      img.src=url
     })
-  }catch{return null}
+    return {w:dims?.w,h:dims?.h,url,isPreview:false}
+  }catch{ return {url,isPreview:false} }
 }
 
 // A print crops the photo to the paper's shape before anything is put on paper,
@@ -355,6 +420,75 @@ export default function StudioPage(){
     return ()=>window.removeEventListener('beforeunload',warn)
   },[photos.length])
 
+  // ---------------------------------------------------------------------
+  // Surviving a trip to checkout.
+  //
+  // Leaving this page unmounts it, so an order built over several minutes used
+  // to vanish the moment someone tapped the logo — no warning, nothing to come
+  // back to. We keep two things: the shape of the order in localStorage, and
+  // the preview images in IndexedDB. Between them the studio can rebuild
+  // itself. The original files cannot be kept, which is why a photo that was
+  // already uploaded carries its storage path: that is what still makes it
+  // printable after a reload.
+  const restoreStartedRef = useRef(false)
+  // Distinct from "restore started". The save effect runs on mount too, and if
+  // it were allowed to fire while photos was still empty it would clear the
+  // snapshot and prune every stored preview — destroying the order it exists to
+  // protect. It stays silent until restore has actually finished.
+  const [hydrated,setHydrated] = useState(false)
+
+  useEffect(()=>{
+    if(restoreStartedRef.current) return
+    restoreStartedRef.current = true
+    let cancelled = false
+    ;(async()=>{
+      try{
+        const snap = getWithTTL<StudioSnapshot>(SNAPSHOT_KEY)
+        if(!snap || !snap.photos?.length) return
+        const previews = await getPreviews(snap.photos.map(p=>p.id))
+        if(cancelled) return
+        const restored: Photo[] = snap.photos.flatMap(p=>{
+          const blob = previews.get(p.id)
+          // No preview means nothing to show. Dropping it is better than a blank
+          // tile, which is the bug we just spent the morning removing.
+          if(!blob) return []
+          return [{...p, url: URL.createObjectURL(blob)}]
+        })
+        if(restored.length===0) return
+        const liveIds = new Set(restored.map(p=>p.id))
+        setPhotos(restored)
+        setSessions((snap.sessions ?? []).map(sess=>({
+          ...sess,
+          date: new Date(sess.date),
+          photoIds: sess.photoIds.filter(id=>liveIds.has(id)),
+          isRenaming: false,
+        })).filter(sess=>sess.photoIds.length>0))
+        setOrderItems((snap.orderItems ?? [])
+          .filter(i=>liveIds.has(i.photoId))
+          .map(i=>({...i, url: restored.find(p=>p.id===i.photoId)!.url})))
+        if(snap.finish==='lustre'||snap.finish==='gloss') setFinish(snap.finish)
+      } finally {
+        if(!cancelled) setHydrated(true)
+      }
+    })()
+    return ()=>{ cancelled = true }
+  },[])
+
+  // Save after every change. Only metadata goes here — the images live in
+  // IndexedDB, and a File cannot be written to either.
+  useEffect(()=>{
+    if(!hydrated) return
+    if(photos.length===0){ clearStored(SNAPSHOT_KEY); void prunePreviews([]); return }
+    const snap: StudioSnapshot = {
+      photos: photos.map(({file,url,...rest})=>rest),
+      sessions: sessions.map(({isRenaming,date,...rest})=>({...rest,date:date.toISOString()})),
+      orderItems: orderItems.map(({url,...rest})=>rest),
+      finish,
+    }
+    setWithTTL(SNAPSHOT_KEY, snap)
+    void prunePreviews(photos.map(p=>p.id))
+  },[hydrated,photos,sessions,orderItems,finish])
+
   // FIX (Memory leak): revoke blob URLs on unmount so they don't leak.
   // We use a ref to avoid revoking URLs that might still be in use during state updates.
   const photoUrlsRef = useRef<string[]>([])
@@ -373,7 +507,7 @@ export default function StudioPage(){
   const selectedPhotos=Array.from(selectedIds).map(id=>photos.find(p=>p.id===id)).filter(Boolean) as Photo[]
   const previewPhoto=selectedPhotos.length>1?selectedPhotos[previewIndex]:activePhoto
   const totalQty=orderItems.reduce((s,i)=>s+i.quantity,0)
-  const orderTotal=orderItems.reduce((s,i)=>s+getPrice(i.size,totalQty)*i.quantity,0)
+  const orderTotalCents=orderItems.reduce((s,i)=>s+getPricePerPrintCents(i.size,totalQty)*i.quantity,0)
   const nextTier = totalQty>0 ? getNextTier(totalQty) : null
   const belowMinimum = totalQty>0 && totalQty < MIN_ORDER_QTY
   // Photos whose real pixel dimensions fall below roughly 150 DPI at the size
@@ -423,10 +557,11 @@ export default function StudioPage(){
         const id=Math.random().toString(36).slice(2)
         newPhotoIds.push(id)
         const exif=await readExif(f)
-        const dim=await readDimensions(f)
+        const prep=await preparePhoto(f)
         let locationText='',hasExifLocation=false
         if(exif.lat!==null&&exif.lon!==null){locationText=await reverseGeocode(exif.lat,exif.lon);hasExifLocation=!!locationText}
-        return{width:dim?.w,height:dim?.h,id,file:f,url:URL.createObjectURL(f),sessionId,filter:'original' as Filter,
+        if(prep.blob) void putPreview(id,prep.blob)
+        return{width:prep.w,height:prep.h,id,file:f,fileName:f.name,url:prep.url,sessionId,filter:'original' as Filter,
           stamp:{...DEFAULT_STAMP,capturedAt:exif.date,hasExifDate:!!exif.date,hasExifLocation,locationText,showDate:!!exif.date,showLocation:hasExifLocation},size:'4x6'}
       }))
       newPhotos.push(...processed)
@@ -639,7 +774,7 @@ export default function StudioPage(){
     setOrderItems(prev=>{
       const existing=prev.find(i=>i.photoId===photo.id&&i.size===photo.size&&i.filter===photo.filter&&JSON.stringify(i.stamp)===JSON.stringify(photo.stamp))
       if(existing) return prev.map(i=>i.id===existing.id?{...i,quantity:i.quantity+1}:i)
-      return[...prev,{id:Math.random().toString(36).slice(2),photoId:photo.id,url:photo.url,fileName:photo.file.name,filter:photo.filter,stamp:{...photo.stamp},size:photo.size,quantity:1}]
+      return[...prev,{id:Math.random().toString(36).slice(2),photoId:photo.id,url:photo.url,fileName:photo.fileName,filter:photo.filter,stamp:{...photo.stamp},size:photo.size,quantity:1}]
     })
     setAddedState(true)
   }
@@ -673,9 +808,25 @@ export default function StudioPage(){
         const photoId = uniquePhotoIds[i]
         const photo = photos.find(p=>p.id===photoId)
         if(!photo) throw new Error(`Photo ${photoId} not found in state`)
+        // Already uploaded on an earlier run at this cart — reuse it. This is
+        // what lets someone return from checkout, change their mind about a
+        // size, and check out again without sending every photo a second time.
+        if(photo.uploadedPath){
+          pathMap[photoId] = photo.uploadedPath
+          setUploadState(s=>({...s,current:i+1}))
+          continue
+        }
+        // Restored from a previous visit but never uploaded: we hold a preview
+        // of it, which is nowhere near print quality. Say which photo, so the
+        // fix is obvious rather than a puzzle.
+        if(!photo.file){
+          throw new Error(`"${photo.fileName}" needs to be added again before checkout — reopen it from your photo library.`)
+        }
         const compressed = await compressForPrint(photo.file)
-        const path = await uploadCompressed(compressed.blob, photo.file.name)
+        const path = await uploadCompressed(compressed.blob, photo.fileName)
         pathMap[photoId] = path
+        // Remember it, so a return trip to the studio does not re-upload.
+        setPhotos(prev=>prev.map(p=>p.id===photoId?{...p,uploadedPath:path}:p))
         setUploadState(s=>({...s,current:i+1}))
       }
     } catch(err:any) {
@@ -1281,7 +1432,7 @@ export default function StudioPage(){
                   <div style={{padding:'10px 12px'}}>
                     <select value={item.size} onChange={e=>setOrderItems(prev=>prev.map(i=>i.id===item.id?{...i,size:e.target.value}:i))}
                       style={{...C.select,fontSize:12,padding:'6px 8px',marginBottom:8}}>
-                      {SIZES.map(s=><option key={s.key} value={s.key}>{s.label} - ${getPrice(s.key,totalQty).toFixed(2)}/ea</option>)}
+                      {SIZES.map(s=><option key={s.key} value={s.key}>{s.label} - {formatCents(getPricePerPrintCents(s.key,totalQty))}/ea</option>)}
                     </select>
                     {(()=>{
                       const n=itemResolutionNote(item,photos)
@@ -1297,7 +1448,7 @@ export default function StudioPage(){
                         <button onClick={()=>updateOrderQty(item.id,1)} style={{width:30,height:30,borderRadius:'50%',border:'1px solid rgba(43,42,40,0.2)',background:'#F7F3EE',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
                       </div>
                       <div style={{display:'flex',alignItems:'center',gap:8}}>
-                        <span style={{fontFamily:'Courier New, monospace',fontSize:12,fontWeight:500}}>${(getPrice(item.size,totalQty)*item.quantity).toFixed(2)}</span>
+                        <span style={{fontFamily:'Courier New, monospace',fontSize:12,fontWeight:500}}>{formatCents(getPricePerPrintCents(item.size,totalQty)*item.quantity)}</span>
                         <button onClick={()=>setOrderItems(prev=>prev.filter(i=>i.id!==item.id))} style={{background:'none',border:'none',cursor:'pointer',color:'#C4B5A5',fontSize:18}}>x</button>
                       </div>
                     </div>
@@ -1318,9 +1469,9 @@ export default function StudioPage(){
                 ):(
                   <>
                     <p style={{fontFamily:'Courier New, monospace',fontSize:10,color:'rgba(247,243,238,0.55)',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:2}}>
-                      {totalQty} prints{finish?` · ${finish} finish`:''} - shipping at checkout
+                      {totalQty} prints{finish?` · ${finish} finish`:''} - flat {formatCents(SHIPPING_FLAT_CENTS)} shipping
                     </p>
-                    <p style={{fontFamily:'Georgia, serif',fontSize:22,color:'#F7F3EE',fontWeight:400}}>${orderTotal.toFixed(2)}<span style={{fontSize:11,opacity:0.55,marginLeft:6}}>+ shipping</span></p>
+                    <p style={{fontFamily:'Georgia, serif',fontSize:22,color:'#F7F3EE',fontWeight:400}}>{formatCents(orderTotalCents)}<span style={{fontSize:11,opacity:0.55,marginLeft:6}}>+ {formatCents(SHIPPING_FLAT_CENTS)} shipping</span></p>
                     {belowMinimum?(
                       <p style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#F5A878',letterSpacing:'0.03em',marginTop:6}}>
                         + Orders start at {MIN_ORDER_QTY} prints - add {MIN_ORDER_QTY-totalQty} more to check out
