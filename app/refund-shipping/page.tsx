@@ -1,5 +1,6 @@
 import { Metadata } from 'next'
 import { CONTACT_EMAIL } from '@/lib/contact'
+import { SHIPPING_FLAT_CENTS, formatCents } from '@/lib/pricing'
 
 export const metadata: Metadata = {
   title: 'Shipping & Refund Policy — Archive Yours',
@@ -27,7 +28,7 @@ export default function RefundShippingPage() {
 
       <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 600, marginTop: 20, marginBottom: 8 }}>Shipping cost</h3>
       <p style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 16 }}>
-        Shipping cost is calculated at checkout based on your order. The amount you see at checkout is the final shipping cost — there are no additional fees.
+        Shipping is a flat {formatCents(SHIPPING_FLAT_CENTS)} on every order, however many prints you order and wherever in the United States it is going. There are no additional fees.
       </p>
 
       <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 600, marginTop: 20, marginBottom: 8 }}>Processing & delivery time</h3>
