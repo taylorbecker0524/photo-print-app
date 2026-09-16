@@ -9,10 +9,29 @@
  *
  * Shipping is a flat cost per parcel and Stripe charges a fixed 30c per
  * transaction, so both are spread across however many prints are in the box.
- * Below three prints those fixed costs exceed the margin on the prints
+ * Below this many prints those fixed costs exceed the margin on the prints
  * themselves and the order loses money no matter what we charge.
+ *
+ * Note on what this does and does not protect: an order containing an 8x10 or
+ * an 8x8 ships in a second parcel, which costs another $6.70 regardless of how
+ * many prints are in the order. A small print earns roughly 65c of margin, so
+ * it takes about ten of them to pay for that extra parcel — no minimum we would
+ * actually want to impose covers it. Those orders are a deliberate, bounded
+ * loss of two to three dollars, accepted in exchange for one simple shipping
+ * price. Everything else clears comfortably.
  */
-export const MIN_ORDER_QTY = 3
+export const MIN_ORDER_QTY = 5
+
+/**
+ * What the customer pays for shipping, in cents. One flat price, every order.
+ *
+ * Prodigi bills us per parcel (~$6.70). Most orders are a single parcel, so
+ * this roughly breaks even; mixed orders containing a large size cost us a
+ * second parcel and we absorb it. Quoting Prodigi live produced $13.40 on an
+ * ordinary order with no explanation attached, which is worse for the business
+ * than the few dollars this costs.
+ */
+export const SHIPPING_FLAT_CENTS = 695
 
 export type PriceTier = { minQty: number; prices: Record<string, number> }
 
@@ -39,4 +58,19 @@ export function getNextTier(totalQty: number): { minQty: number; needed: number 
   const breakpoints = [10, 25, 50, 100]
   const next = breakpoints.find(b => totalQty < b)
   return next ? { minQty: next, needed: next - totalQty } : null
+}
+
+/**
+ * Format a whole number of cents as a dollar string.
+ *
+ * Every amount on the site is carried as an integer number of cents and only
+ * converted here, at the moment it is displayed. Dividing by 100 earlier and
+ * adding the results as floating point is what made a ten-print order show
+ * lines totalling $39.44 beside a total of $39.45: each line was rounded on its
+ * own, the total was not. Integers cannot drift, so the lines always add up.
+ */
+export function formatCents(cents: number): string {
+  const sign = cents < 0 ? '-' : ''
+  const abs = Math.abs(Math.round(cents))
+  return `${sign}$${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`
 }
