@@ -103,10 +103,27 @@ async function readDimensions(file:File):Promise<{w:number;h:number}|null>{
   }catch{return null}
 }
 
+// A print crops the photo to the paper's shape before anything is put on paper,
+// so the pixels that matter are the ones inside that crop, not the whole frame.
+// A near-square photo ordered at 5x7 loses a third of its width; judging it on
+// the uncropped file overstates what actually reaches the paper.
+function effectivePixels(w:number,h:number,shortIn:number,longIn:number):{short:number;long:number}{
+  const photoLong=Math.max(w,h),photoShort=Math.min(w,h)
+  const photoAspect=photoLong/photoShort
+  const printAspect=longIn/shortIn
+  if(photoAspect>printAspect){
+    // Photo is longer than the paper: the long edge is trimmed.
+    return{short:photoShort,long:Math.round(photoShort*printAspect)}
+  }
+  // Photo is squarer than the paper: the short edge is trimmed.
+  return{short:Math.round(photoLong/printAspect),long:photoLong}
+}
+
 function isTooSmallForPrint(size:string,w?:number,h?:number):boolean{
   const need=MIN_PRINT_PIXELS[size]
   if(!need||!w||!h)return false
-  return Math.min(w,h)<need.short||Math.max(w,h)<need.long
+  const eff=effectivePixels(w,h,need.short/150,need.long/150)
+  return eff.short<need.short||eff.long<need.long
 }
 /**
  * Turn a measured photo into the sentence a customer can act on.
@@ -161,13 +178,27 @@ async function readExif(file: File): Promise<{ date: string | null; lat: number 
 // User-Agent Nominatim requires and caches results to stay under the rate limit.
 // Calling Nominatim directly from the browser violates their usage policy and
 // breaks on bulk uploads.
+// Photos from one outing share a location, so a 16-photo import used to fire
+// 16 near-identical lookups and wait on every one. Round to ~100m and reuse the
+// answer: a batch from a single place now costs one request instead of sixteen.
+const geocodeCache=new Map<string,Promise<string>>()
+
 async function reverseGeocode(lat: number, lon: number): Promise<string> {
-  try {
-    const r=await fetch(`/api/geocode?lat=${lat}&lon=${lon}`)
-    if(!r.ok) return ''
-    const d=await r.json()
-    return d.location ?? ''
-  } catch { return '' }
+  const key=`${lat.toFixed(3)},${lon.toFixed(3)}`
+  const hit=geocodeCache.get(key)
+  if(hit) return hit
+  const req=(async()=>{
+    try {
+      const r=await fetch(`/api/geocode?lat=${lat}&lon=${lon}`)
+      if(!r.ok) return ''
+      const d=await r.json()
+      return d.location ?? ''
+    } catch { return '' }
+  })()
+  geocodeCache.set(key,req)
+  // A failed lookup should not be cached forever — the next photo may succeed.
+  req.then(v=>{ if(!v) geocodeCache.delete(key) }).catch(()=>geocodeCache.delete(key))
+  return req
 }
 
 const DEFAULT_STAMP: StampConfig = {
@@ -277,6 +308,9 @@ export default function StudioPage(){
   const [addedState,setAddedState]=useState(false)
   const [showSessionPrompt,setShowSessionPrompt]=useState(false)
   const [pendingFiles,setPendingFiles]=useState<FileList|null>(null)
+  // Reading EXIF and dimensions for a large import takes real time. Without a
+  // counter the page looks frozen, so people tap again or back out.
+  const [importState,setImportState]=useState<{done:number;total:number}|null>(null)
   // FIX 12: controlled bulk override values — these are the source of truth
   // for bulk text fields. When the selection changes, we re-apply current
   // overrides to any newly-added selected photo via a sync effect.
@@ -382,6 +416,7 @@ export default function StudioPage(){
     // uploads smooth and rate-limit-friendly.
     const CHUNK_SIZE=6
     const newPhotos:Photo[]=[]
+    setImportState({done:0,total:imageFiles.length})
     for(let start=0;start<imageFiles.length;start+=CHUNK_SIZE){
       const batch=imageFiles.slice(start,start+CHUNK_SIZE)
       const processed=await Promise.all(batch.map(async(f)=>{
@@ -395,9 +430,13 @@ export default function StudioPage(){
           stamp:{...DEFAULT_STAMP,capturedAt:exif.date,hasExifDate:!!exif.date,hasExifLocation,locationText,showDate:!!exif.date,showLocation:hasExifLocation},size:'4x6'}
       }))
       newPhotos.push(...processed)
+      // Paint each batch as it lands. Holding all of them until the last photo
+      // finished is why a 16-photo import showed an empty page for so long.
+      setPhotos(prev=>[...prev,...processed])
+      setSessions(prev=>prev.map(s=>s.id===sessionId?{...s,photoIds:[...s.photoIds,...processed.map(p=>p.id)]}:s))
+      setImportState({done:Math.min(start+CHUNK_SIZE,imageFiles.length),total:imageFiles.length})
     }
-    setPhotos(prev=>[...prev,...newPhotos])
-    setSessions(prev=>prev.map(s=>s.id===sessionId?{...s,photoIds:[...s.photoIds,...newPhotoIds]}:s))
+    setImportState(null)
     if(newPhotos.length>0) setActivePhotoId(prev=>prev??newPhotos[0].id)
   },[])
 
@@ -576,14 +615,23 @@ export default function StudioPage(){
     }
   },[selectedIds.size])
 
+  // Unchecking a photo used to leave activePhotoId pointing at it. Drop back to
+  // one checked photo and the panel is in single-photo mode, which edits
+  // activePhoto — so the next filter landed on the photo just unchecked while
+  // the UI showed a different one selected. Keep the edit target inside the
+  // selection at all times.
   const toggleSelect=(id:string)=>{
-    setSelectedIds(prev=>{
-      const n=new Set(prev)
-      n.has(id)?n.delete(id):n.add(id)
-      setPreviewIndex(0)
-      return n
-    })
-    setActivePhotoId(id)
+    const wasSelected=selectedIds.has(id)
+    const next=new Set(selectedIds)
+    if(wasSelected) next.delete(id); else next.add(id)
+    setSelectedIds(next)
+    setPreviewIndex(0)
+    if(wasSelected){
+      const remaining=Array.from(next)
+      setActivePhotoId(remaining.length>0?remaining[remaining.length-1]:null)
+    }else{
+      setActivePhotoId(id)
+    }
     setAddedState(false)
   }
 
@@ -707,9 +755,23 @@ export default function StudioPage(){
         <h2 style={{fontFamily:'Georgia, serif',fontSize:26,fontWeight:400,color:'#2B2A28'}}>Your photos</h2>
         <div style={{display:'flex',gap:8}}>
           <input ref={addMoreRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>handleInitialFiles(e.target.files)}/>
-          <button onClick={()=>addMoreRef.current?.click()} style={{...C.ghost,fontSize:11,padding:'8px 14px'}}>+ Add more</button>
+          <button onClick={()=>addMoreRef.current?.click()} disabled={!!importState} style={{...C.ghost,fontSize:11,padding:'8px 14px',opacity:importState?0.5:1,cursor:importState?'wait':'pointer'}}>+ Add more</button>
         </div>
       </div>
+
+      {/* Reading dates and locations out of a big batch takes a few seconds.
+          Say so, or the page looks broken and people tap again. */}
+      {importState&&(
+        <div style={{marginBottom:16,background:'#EFE8DF',border:'1px solid rgba(43,42,40,0.1)',borderRadius:10,padding:'10px 14px'}}>
+          <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',gap:10,marginBottom:7}}>
+            <span style={{fontFamily:'Georgia, serif',fontSize:14,color:'#2B2A28'}}>Reading your photos…</span>
+            <span style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#8A6F5A'}}>{importState.done} of {importState.total}</span>
+          </div>
+          <div style={{height:5,borderRadius:5,background:'rgba(43,42,40,0.1)',overflow:'hidden'}}>
+            <div style={{height:'100%',width:`${importState.total?Math.round(importState.done/importState.total*100):0}%`,background:'#D97A43',borderRadius:5,transition:'width .3s ease'}}/>
+          </div>
+        </div>
+      )}
 
       {/* FIX 15: removed the duplicate dark mobile filter bar — the right-panel Filter card covers mobile too */}
 
@@ -741,7 +803,14 @@ export default function StudioPage(){
                           style={{position:'absolute',top:6,left:6,width:22,height:22,borderRadius:5,border:`2px solid ${isSel?'#D97A43':'rgba(255,255,255,0.9)'}`,background:isSel?'#D97A43':'rgba(255,255,255,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:10,cursor:'pointer'}}>
                           {isSel&&<span style={{color:'white',fontSize:12,fontWeight:700}}>✓</span>}
                         </div>
-                        <div onClick={()=>{setActivePhotoId(photo.id===activePhotoId?null:photo.id);setAddedState(false)}}
+                        <div onClick={()=>{
+                          // With photos checked the panel edits the selection. Focusing a
+                          // photo outside it would preview one photo while the controls
+                          // changed others, so clear the selection first.
+                          if(selectedIds.size>0&&!selectedIds.has(photo.id)) setSelectedIds(new Set())
+                          setActivePhotoId(photo.id===activePhotoId?null:photo.id)
+                          setAddedState(false)
+                        }}
                           style={{aspectRatio:'1',borderRadius:10,overflow:'hidden',border:`2.5px solid ${isActive||isSel?'#D97A43':'transparent'}`,cursor:'pointer',position:'relative'}}>
                           {/* FIX 8: removed filter style from grid thumbnails */}
                           <img src={photo.url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
@@ -788,89 +857,6 @@ export default function StudioPage(){
                   <canvas ref={photoCanvasRef} style={{maxWidth:'100%',maxHeight:400,display:'block',borderRadius:3,filter:canvasCssFilter,transition:'filter 0.15s'}}/>
                   <canvas ref={stampCanvasRef} style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',pointerEvents:'none'}}/>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {orderItems.length>0&&(
-            <div style={{marginTop:36}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
-                <h2 style={{fontFamily:'Georgia, serif',fontSize:26,fontWeight:400,color:'#2B2A28'}}>In your order</h2>
-                <span style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#8A6F5A'}}>{totalQty} prints</span>
-              </div>
-              <div style={{display:'flex',gap:12,overflowX:'auto',paddingBottom:12,scrollbarWidth:'none'}}>
-                {orderItems.map((item,idx)=>(
-                  <div key={item.id} style={{...C.card,flexShrink:0,width:210}}>
-                    <div style={{position:'relative'}}>
-                      <img src={item.url} alt="" style={{width:210,height:140,objectFit:'cover',display:'block',filter:getFCss(item.filter)}}/>
-                      <div style={{position:'absolute',top:6,left:6,background:'rgba(43,42,40,0.72)',color:'#F7F3EE',borderRadius:4,padding:'2px 8px',fontFamily:'Courier New, monospace',fontSize:10}}>#{idx+1}</div>
-                      {item.stamp.stampLocation==='back'&&(
-                        <div style={{position:'absolute',bottom:5,right:5,background:'rgba(247,243,238,0.85)',color:'#5C4A3A',borderRadius:3,padding:'2px 6px',fontFamily:'Courier New, monospace',fontSize:8,letterSpacing:'0.05em'}}>BACK</div>
-                      )}
-                    </div>
-                    <div style={{padding:'10px 12px'}}>
-                      <select value={item.size} onChange={e=>setOrderItems(prev=>prev.map(i=>i.id===item.id?{...i,size:e.target.value}:i))}
-                        style={{...C.select,fontSize:12,padding:'6px 8px',marginBottom:8}}>
-                        {SIZES.map(s=><option key={s.key} value={s.key}>{s.label} - ${getPrice(s.key,totalQty).toFixed(2)}/ea</option>)}
-                      </select>
-                      {(()=>{
-                        const n=itemResolutionNote(item,photos)
-                        return n?(
-                          <div style={{ fontSize: 11, color: "#8A5A12", background: "#FAEEDA", border: "1px solid rgba(217,122,67,.3)", borderRadius: 8, padding: "6px 8px", marginTop: 6, lineHeight: 1.4 }}>{n}</div>
-                        ):null
-                      })()}
-                      <StampBullets stamp={item.stamp} filter={item.filter}/>
-                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                        <div style={{display:'flex',alignItems:'center',gap:10}}>
-                          <button onClick={()=>updateOrderQty(item.id,-1)} style={{width:30,height:30,borderRadius:'50%',border:'1px solid rgba(43,42,40,0.2)',background:'#F7F3EE',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center'}}>-</button>
-                          <span style={{fontSize:15,fontWeight:500,minWidth:20,textAlign:'center'}}>{item.quantity}</span>
-                          <button onClick={()=>updateOrderQty(item.id,1)} style={{width:30,height:30,borderRadius:'50%',border:'1px solid rgba(43,42,40,0.2)',background:'#F7F3EE',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
-                        </div>
-                        <div style={{display:'flex',alignItems:'center',gap:8}}>
-                          <span style={{fontFamily:'Courier New, monospace',fontSize:12,fontWeight:500}}>${(getPrice(item.size,totalQty)*item.quantity).toFixed(2)}</span>
-                          <button onClick={()=>setOrderItems(prev=>prev.filter(i=>i.id!==item.id))} style={{background:'none',border:'none',cursor:'pointer',color:'#C4B5A5',fontSize:18}}>x</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div style={{position:'sticky',bottom:16,marginTop:16,background:'#2B2A28',borderRadius:14,padding:'16px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',boxShadow:'0 8px 32px rgba(43,42,40,0.2)',zIndex:50,gap:12}}>
-                <div style={{flex:1,minWidth:0}}>
-                  {uploadState.error&&(
-                    <p style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#F5A878',marginBottom:4}}>{uploadState.error}</p>
-                  )}
-                  {uploadState.active?(
-                    <>
-                      <p style={{fontFamily:'Courier New, monospace',fontSize:10,color:'rgba(247,243,238,0.55)',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:2}}>Preparing photos {uploadState.current} of {uploadState.total}</p>
-                      <p style={{fontFamily:'Georgia, serif',fontSize:18,color:'#F7F3EE',fontWeight:400}}>Hang tight…</p>
-                    </>
-                  ):(
-                    <>
-                      <p style={{fontFamily:'Courier New, monospace',fontSize:10,color:'rgba(247,243,238,0.55)',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:2}}>
-                        {totalQty} prints{finish?` · ${finish} finish`:''} - shipping at checkout
-                      </p>
-                      <p style={{fontFamily:'Georgia, serif',fontSize:22,color:'#F7F3EE',fontWeight:400}}>${orderTotal.toFixed(2)}<span style={{fontSize:11,opacity:0.55,marginLeft:6}}>+ shipping</span></p>
-                      {belowMinimum?(
-                        <p style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#F5A878',letterSpacing:'0.03em',marginTop:6}}>
-                          + Orders start at {MIN_ORDER_QTY} prints - add {MIN_ORDER_QTY-totalQty} more to check out
-                        </p>
-                      ):nextTier&&(
-                        <p style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#F5A878',letterSpacing:'0.03em',marginTop:6}}>
-                          + Add {nextTier.needed} more print{nextTier.needed>1?'s':''} to reach the {nextTier.minQty}+ price
-                        </p>
-                      )}
-                      {softCount>0&&(
-                        <p style={{ fontSize: 11, color: "#E8A33D", margin: "4px 0 0", lineHeight: 1.45 }}>
-                          {softCount===1?"1 photo may look soft":softCount+" photos may look soft"} at the size chosen. They will still print, but a smaller size will be sharper.
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-                <button onClick={goToCheckout} disabled={uploadState.active||!finish||belowMinimum} style={{...C.accent,width:'auto',padding:'13px 24px',fontSize:13,flexShrink:0,opacity:(uploadState.active||!finish||belowMinimum)?0.5:1,cursor:(uploadState.active||!finish||belowMinimum)?'not-allowed':'pointer'}}>
-                  {uploadState.active?'Uploading…':!finish?'Choose finish':belowMinimum?`Add ${MIN_ORDER_QTY-totalQty} more`:'Checkout'}
-                </button>
               </div>
             </div>
           )}
@@ -1271,6 +1257,93 @@ export default function StudioPage(){
           </div>
         )}
       </div>
+
+      {/* The order sits below the editing controls: it grows as you go, and
+          burying the filters under it meant more scrolling with every print. */}
+        {orderItems.length>0&&(
+          <div style={{marginTop:36}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
+              <h2 style={{fontFamily:'Georgia, serif',fontSize:26,fontWeight:400,color:'#2B2A28'}}>In your order</h2>
+              <span style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#8A6F5A'}}>{totalQty} prints</span>
+            </div>
+            {/* Wraps to new rows rather than running off the side of the phone.
+                A sideways strip meant the order kept growing out of view. */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(190px, 1fr))',gap:12,paddingBottom:12}}>
+              {orderItems.map((item,idx)=>(
+                <div key={item.id} style={{...C.card,width:'100%',minWidth:0}}>
+                  <div style={{position:'relative'}}>
+                    <img src={item.url} alt="" style={{width:'100%',height:140,objectFit:'cover',display:'block',filter:getFCss(item.filter)}}/>
+                    <div style={{position:'absolute',top:6,left:6,background:'rgba(43,42,40,0.72)',color:'#F7F3EE',borderRadius:4,padding:'2px 8px',fontFamily:'Courier New, monospace',fontSize:10}}>#{idx+1}</div>
+                    {item.stamp.stampLocation==='back'&&(
+                      <div style={{position:'absolute',bottom:5,right:5,background:'rgba(247,243,238,0.85)',color:'#5C4A3A',borderRadius:3,padding:'2px 6px',fontFamily:'Courier New, monospace',fontSize:8,letterSpacing:'0.05em'}}>BACK</div>
+                    )}
+                  </div>
+                  <div style={{padding:'10px 12px'}}>
+                    <select value={item.size} onChange={e=>setOrderItems(prev=>prev.map(i=>i.id===item.id?{...i,size:e.target.value}:i))}
+                      style={{...C.select,fontSize:12,padding:'6px 8px',marginBottom:8}}>
+                      {SIZES.map(s=><option key={s.key} value={s.key}>{s.label} - ${getPrice(s.key,totalQty).toFixed(2)}/ea</option>)}
+                    </select>
+                    {(()=>{
+                      const n=itemResolutionNote(item,photos)
+                      return n?(
+                        <div style={{ fontSize: 11, color: "#8A5A12", background: "#FAEEDA", border: "1px solid rgba(217,122,67,.3)", borderRadius: 8, padding: "6px 8px", marginTop: 6, lineHeight: 1.4 }}>{n}</div>
+                      ):null
+                    })()}
+                    <StampBullets stamp={item.stamp} filter={item.filter}/>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:10}}>
+                        <button onClick={()=>updateOrderQty(item.id,-1)} style={{width:30,height:30,borderRadius:'50%',border:'1px solid rgba(43,42,40,0.2)',background:'#F7F3EE',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center'}}>-</button>
+                        <span style={{fontSize:15,fontWeight:500,minWidth:20,textAlign:'center'}}>{item.quantity}</span>
+                        <button onClick={()=>updateOrderQty(item.id,1)} style={{width:30,height:30,borderRadius:'50%',border:'1px solid rgba(43,42,40,0.2)',background:'#F7F3EE',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
+                      </div>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <span style={{fontFamily:'Courier New, monospace',fontSize:12,fontWeight:500}}>${(getPrice(item.size,totalQty)*item.quantity).toFixed(2)}</span>
+                        <button onClick={()=>setOrderItems(prev=>prev.filter(i=>i.id!==item.id))} style={{background:'none',border:'none',cursor:'pointer',color:'#C4B5A5',fontSize:18}}>x</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{position:'sticky',bottom:16,marginTop:16,background:'#2B2A28',borderRadius:14,padding:'16px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',boxShadow:'0 8px 32px rgba(43,42,40,0.2)',zIndex:50,gap:12}}>
+              <div style={{flex:1,minWidth:0}}>
+                {uploadState.error&&(
+                  <p style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#F5A878',marginBottom:4}}>{uploadState.error}</p>
+                )}
+                {uploadState.active?(
+                  <>
+                    <p style={{fontFamily:'Courier New, monospace',fontSize:10,color:'rgba(247,243,238,0.55)',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:2}}>Preparing photos {uploadState.current} of {uploadState.total}</p>
+                    <p style={{fontFamily:'Georgia, serif',fontSize:18,color:'#F7F3EE',fontWeight:400}}>Hang tight…</p>
+                  </>
+                ):(
+                  <>
+                    <p style={{fontFamily:'Courier New, monospace',fontSize:10,color:'rgba(247,243,238,0.55)',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:2}}>
+                      {totalQty} prints{finish?` · ${finish} finish`:''} - shipping at checkout
+                    </p>
+                    <p style={{fontFamily:'Georgia, serif',fontSize:22,color:'#F7F3EE',fontWeight:400}}>${orderTotal.toFixed(2)}<span style={{fontSize:11,opacity:0.55,marginLeft:6}}>+ shipping</span></p>
+                    {belowMinimum?(
+                      <p style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#F5A878',letterSpacing:'0.03em',marginTop:6}}>
+                        + Orders start at {MIN_ORDER_QTY} prints - add {MIN_ORDER_QTY-totalQty} more to check out
+                      </p>
+                    ):nextTier&&(
+                      <p style={{fontFamily:'Courier New, monospace',fontSize:11,color:'#F5A878',letterSpacing:'0.03em',marginTop:6}}>
+                        + Add {nextTier.needed} more print{nextTier.needed>1?'s':''} to reach the {nextTier.minQty}+ price
+                      </p>
+                    )}
+                    {softCount>0&&(
+                      <p style={{ fontSize: 11, color: "#E8A33D", margin: "4px 0 0", lineHeight: 1.45 }}>
+                        {softCount===1?"1 photo may look soft":softCount+" photos may look soft"} at the size chosen. They will still print, but a smaller size will be sharper.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+              <button onClick={goToCheckout} disabled={uploadState.active||!finish||belowMinimum} style={{...C.accent,width:'auto',padding:'13px 24px',fontSize:13,flexShrink:0,opacity:(uploadState.active||!finish||belowMinimum)?0.5:1,cursor:(uploadState.active||!finish||belowMinimum)?'not-allowed':'pointer'}}>
+                {uploadState.active?'Uploading…':!finish?'Choose finish':belowMinimum?`Add ${MIN_ORDER_QTY-totalQty} more`:'Checkout'}
+              </button>
+            </div>
+          </div>
+        )}
     </div>
   )
 }
