@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { loadStripe } from '@stripe/stripe-js'
-import { getPricePerPrintCents } from '@/lib/pricing'
+import { getPricePerPrintCents, formatCents, SHIPPING_FLAT_CENTS } from '@/lib/pricing'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
@@ -12,7 +12,7 @@ type Finish = 'lustre' | 'gloss'
 // Per-print price in dollars, from the single source of truth in lib/pricing —
 // the same module /api/checkout charges from, so what the customer sees here is
 // exactly what Stripe bills.
-const getPrice = (size: string, qty: number) => getPricePerPrintCents(size, qty) / 100
+// Everything below stays in whole cents until the moment it is printed.
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '10px 14px', fontSize: 14,
@@ -67,12 +67,13 @@ export default function CheckoutPage() {
   }, [])
 
   const totalQty = cart.reduce((s, i) => s + i.quantity, 0)
-  const subtotal = cart.reduce((s, i) => s + getPrice(i.size, totalQty) * i.quantity, 0)
-  const shippingDollars = shippingCents !== null ? shippingCents / 100 : null
-  const taxDollars = taxCents !== null ? taxCents / 100 : null
-  // Must match what /api/checkout charged, or the Pay button lies about the amount.
-  const total =
-    shippingDollars !== null ? subtotal + shippingDollars + (taxDollars ?? 0) : subtotal
+  const lineCents = (item: { size: string; quantity: number }) =>
+    getPricePerPrintCents(item.size, totalQty) * item.quantity
+  const subtotalCents = cart.reduce((s, i) => s + lineCents(i), 0)
+  // Must match what /api/checkout charged, or the Pay button lies about the
+  // amount. The API sums in cents, so this does too.
+  const totalCents =
+    shippingCents !== null ? subtotalCents + shippingCents + (taxCents ?? 0) : subtotalCents
 
   const handleShippingSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -213,8 +214,23 @@ export default function CheckoutPage() {
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '48px 24px' }}>
+      {/* There was no way back from here, and no sign that leaving would cost
+          you the order you had just spent ten minutes building. The studio now
+          restores itself, so this is a real return rather than a fresh start. */}
+      <button
+        onClick={() => router.push('/studio')}
+        style={{
+          background: 'none', border: 'none', padding: 0, marginBottom: 14,
+          color: '#8A6F5A', fontSize: 13, cursor: 'pointer',
+          fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6,
+        }}
+      >
+        ← Back to your photos
+      </button>
       <h1 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 40, fontWeight: 400, marginBottom: 8, color: '#2B2A28' }}>Checkout</h1>
-      <p style={{ fontSize: 13, color: '#8A6F5A', marginBottom: 40, letterSpacing: '0.04em' }}>Complete your order below</p>
+      <p style={{ fontSize: 13, color: '#8A6F5A', marginBottom: 40, letterSpacing: '0.04em' }}>
+        Complete your order below. Your order is saved — you can go back and change it.
+      </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 32 }} className="checkout-grid">
         <div>
@@ -380,7 +396,7 @@ export default function CheckoutPage() {
                   onClick={handlePaymentSubmit}
                   disabled={step === 'processing'}
                   style={{ width: '100%', marginTop: 20, padding: 14, background: '#D97A43', color: '#F7F3EE', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: step === 'processing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: step === 'processing' ? 0.6 : 1 }}>
-                  {step === 'processing' ? 'Processing...' : `Pay $${total.toFixed(2)}`}
+                  {step === 'processing' ? 'Processing...' : `Pay ${formatCents(totalCents)}`}
                 </button>
               )}
             </div>
@@ -393,7 +409,7 @@ export default function CheckoutPage() {
             {cart.map((item, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                 <span style={{ color: '#8A6F5A' }}>{item.quantity}× {item.size}" print</span>
-                <span style={{ fontWeight: 500 }}>${(getPrice(item.size, totalQty) * item.quantity).toFixed(2)}</span>
+                <span style={{ fontWeight: 500 }}>{formatCents(lineCents(item))}</span>
               </div>
             ))}
           </div>
@@ -405,28 +421,28 @@ export default function CheckoutPage() {
           )}
           <div style={{ borderTop: finish ? 'none' : '1px solid rgba(43,42,40,0.1)', paddingTop: finish ? 0 : 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#8A6F5A' }}>
-              <span>Subtotal</span><span>${subtotal.toFixed(2)}</span>
+              <span>Subtotal</span><span>{formatCents(subtotalCents)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#8A6F5A' }}>
               <span>Shipping</span>
               <span>
-                {shippingDollars === null
-                  ? <span style={{ fontStyle: 'italic', fontSize: 11 }}>Calculated at next step</span>
-                  : `${shippingDollars.toFixed(2)}`}
+                {shippingCents === null
+                  ? <span style={{ fontStyle: 'italic', fontSize: 11 }}>Flat {formatCents(SHIPPING_FLAT_CENTS)}</span>
+                  : formatCents(shippingCents)}
               </span>
             </div>
-            {taxDollars !== null && (
+            {taxCents !== null && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#8A6F5A' }}>
                 <span>Sales tax</span>
-                <span>${taxDollars.toFixed(2)}</span>
+                <span>{formatCents(taxCents)}</span>
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 600, paddingTop: 8, borderTop: '1px solid rgba(43,42,40,0.1)', marginTop: 4 }}>
               <span>Total</span>
               <span>
-                {shippingDollars === null
-                  ? `$${subtotal.toFixed(2)}+`
-                  : `$${total.toFixed(2)}`}
+                {shippingCents === null
+                  ? `${formatCents(subtotalCents)}+`
+                  : formatCents(totalCents)}
               </span>
             </div>
           </div>
