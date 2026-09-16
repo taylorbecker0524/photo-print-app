@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
-import { getPricePerPrintCents, MIN_ORDER_QTY } from '@/lib/pricing'
+import { getPricePerPrintCents, MIN_ORDER_QTY, SHIPPING_FLAT_CENTS } from '@/lib/pricing'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-
-const FALLBACK_US_SHIPPING_CENTS = 699
 
 export async function POST(req: NextRequest) {
   try {
     const { createServerSupabase } = await import('@/lib/supabase')
     const { stripe } = await import('@/lib/stripe')
-    const { getProdigiShippingQuote, getSku } = await import('@/lib/prodigi')
 
     const body = await req.json()
     const { email, items, shippingAddress, finish } = body
@@ -51,22 +48,15 @@ export async function POST(req: NextRequest) {
       0
     )
 
-    let shippingCents: number
-    // Default method if the quote call fails; the webhook fulfills with whatever
-    // we record here, so the method we charge for and the method we order always match.
-    let shippingMethod = 'Budget'
-    try {
-      const quote = await getProdigiShippingQuote({
-        items: items.map((i: any) => ({ sku: getSku(i.size), copies: i.quantity })),
-        destinationCountryCode: shippingAddress.country,
-        finish,
-      })
-      shippingCents = quote.shippingCents
-      shippingMethod = quote.method // cheapest available method (usually Budget)
-    } catch (quoteErr: any) {
-      console.error('[checkout] Prodigi quote failed, using fallback:', quoteErr?.message)
-      shippingCents = FALLBACK_US_SHIPPING_CENTS
-    }
+    // One flat shipping price, matching what the customer was shown. We no
+    // longer quote Prodigi at checkout: their price is per parcel, so an order
+    // with one large print came back at $13.40 with nothing to explain it.
+    // Charging a fixed price also means checkout can no longer be delayed or
+    // derailed by an outage at Prodigi.
+    const shippingCents = SHIPPING_FLAT_CENTS
+    // The webhook fulfills with whatever we record here, so the method we
+    // charge for and the method we order always match.
+    const shippingMethod = 'Budget'
 
     // Sales tax.
     //
