@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { SHIPPING_FLAT_CENTS } from '@/lib/pricing'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const FALLBACK_US_SHIPPING_CENTS = 699  // $6.99
-
 export async function POST(req: NextRequest) {
   try {
-    const { getProdigiShippingQuote, getSku } = await import('@/lib/prodigi')
     const body = await req.json()
     const { items, destinationCountryCode, finish } = body
 
@@ -32,32 +30,20 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const prodigiItems = items.map((i: any) => ({
-      sku: getSku(i.size),
-      copies: i.quantity,
-    }))
-
-    try {
-      const quote = await getProdigiShippingQuote({
-        items: prodigiItems,
-        destinationCountryCode,
-        finish,
-      })
-      return NextResponse.json({
-        shippingCents: quote.shippingCents,
-        currency: quote.currency,
-        method: quote.method,
-        source: 'prodigi',
-      })
-    } catch (quoteErr: any) {
-      console.error('[shipping-quote] Prodigi quote failed, using fallback:', quoteErr?.message)
-      return NextResponse.json({
-        shippingCents: FALLBACK_US_SHIPPING_CENTS,
-        currency: 'USD',
-        method: 'Standard',
-        source: 'fallback',
-      })
-    }
+    // One flat shipping price for every order. We used to quote Prodigi live,
+    // which is why an ordinary order once showed $13.40: Prodigi bills per
+    // parcel, and a large print ships in a second one. Charging a single
+    // predictable price is worth more than passing the real cost through.
+    //
+    // This also removes a network call from the checkout path, so shipping now
+    // appears instantly and can no longer fail or fall back.
+    void items
+    return NextResponse.json({
+      shippingCents: SHIPPING_FLAT_CENTS,
+      currency: 'USD',
+      method: 'Budget',
+      source: 'flat',
+    })
   } catch (err: any) {
     console.error('[shipping-quote] error:', err)
     return NextResponse.json(
