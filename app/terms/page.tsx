@@ -1,5 +1,5 @@
 import { Metadata } from 'next'
-import { MIN_ORDER_QTY, PRICE_TIERS } from '@/lib/pricing'
+import { MIN_ORDER_QTY, PRICE_TIERS, SHIPPING_FLAT_CENTS, formatCents } from '@/lib/pricing'
 
 // Ascending list of quantities where the per-print price drops, e.g. [10, 25, 50, 100].
 const TIER_BREAKS = PRICE_TIERS.map(t => t.minQty).filter(q => q > 1).sort((a, b) => a - b)
@@ -72,7 +72,7 @@ export default function TermsPage() {
 
       <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 26, fontWeight: 400, marginTop: 32, marginBottom: 12 }}>5. Shipping</h2>
       <p style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 24 }}>
-        Shipping costs are calculated at checkout based on your destination and order contents. We currently ship within the United States only. Delivery times are estimates and not guaranteed. See our <a href="/refund-shipping" style={{ color: '#D97A43' }}>Shipping & Refund Policy</a> for details.
+        Shipping is a flat {formatCents(SHIPPING_FLAT_CENTS)} per order. We currently ship within the United States only. Delivery times are estimates and not guaranteed. See our <a href="/refund-shipping" style={{ color: '#D97A43' }}>Shipping & Refund Policy</a> for details.
       </p>
 
       <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 26, fontWeight: 400, marginTop: 32, marginBottom: 12 }}>6. Refunds and Returns</h2>
