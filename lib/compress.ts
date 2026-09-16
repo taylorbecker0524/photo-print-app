@@ -116,17 +116,55 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
  * The caller should use this path in the cart instead of the local fileName.
  */
 export async function uploadCompressed(blob: Blob, originalFileName: string): Promise<string> {
-  const formData = new FormData()
   // Send as .jpg since we always compress to JPEG
   const safeName = originalFileName.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.[^.]+$/, '.jpg')
-  formData.append('photo', new File([blob], safeName, { type: 'image/jpeg' }))
 
-  const res = await fetch('/api/upload', { method: 'POST', body: formData })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`Upload failed (${res.status}): ${text || 'unknown error'}`)
+  // Supabase storage occasionally answers with a database timeout under a burst
+  // of uploads, and a dropped connection on a phone is ordinary. Both are
+  // transient, and both used to end the customer's order outright. Retry a few
+  // times with a widening gap before giving up. Only 5xx and network failures
+  // are retried — a 4xx means this file will never be accepted, so retrying it
+  // just makes the customer wait longer for the same answer.
+  const MAX_ATTEMPTS = 4
+  let lastError: Error | null = null
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    // A fresh FormData per attempt: the body of a used request cannot be resent.
+    const formData = new FormData()
+    formData.append('photo', new File([blob], safeName, { type: 'image/jpeg' }))
+
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      if (res.ok) {
+        const data = await res.json()
+        if (!data.path) throw new Error('Upload response missing path')
+        return data.path as string
+      }
+      if (res.status < 500) {
+        const text = await res.text().catch(() => '')
+        let message = 'We could not accept that photo.'
+        try { message = JSON.parse(text)?.error ?? message } catch {}
+        throw new UploadRejected(message)
+      }
+      lastError = new Error(`Server error ${res.status}`)
+    } catch (err: any) {
+      if (err instanceof UploadRejected) throw err
+      lastError = err instanceof Error ? err : new Error(String(err))
+    }
+
+    if (attempt < MAX_ATTEMPTS) {
+      await new Promise((r) => setTimeout(r, 600 * 2 ** (attempt - 1)))
+    }
   }
-  const data = await res.json()
-  if (!data.path) throw new Error('Upload response missing path')
-  return data.path as string
+
+  // Everything the customer needs to know: it was us, not their photo, and
+  // trying again is worth doing.
+  throw new Error(
+    `Could not upload "${originalFileName}" after ${MAX_ATTEMPTS} tries. ` +
+    `This is usually temporary — please try again in a moment.` +
+    (lastError ? ` (${lastError.message})` : '')
+  )
 }
+
+/** A refusal the customer cannot fix by waiting — wrong type, too large. */
+export class UploadRejected extends Error {}
