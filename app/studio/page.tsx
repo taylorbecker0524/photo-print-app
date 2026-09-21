@@ -639,8 +639,17 @@ export default function StudioPage(){
     }
 
     // FRONT side
+    //
+    // Nothing used to cancel an in-flight load when this effect re-ran, so two
+    // quick selection changes raced and whichever image finished LAST painted
+    // the canvas. A previously previewed photo is warm in cache and resolves
+    // almost instantly, so the stale one often won — the preview would sit on
+    // the wrong photo until you toggled the selection again. The guard below
+    // makes the newest selection always win.
+    let cancelled=false
     const img=new Image()
     img.onload=()=>{
+      if(cancelled) return
       let cw=Math.min(maxW,img.naturalWidth),ch=(cw/img.naturalWidth)*img.naturalHeight
       if(ch>maxH){ch=maxH;cw=(ch/img.naturalHeight)*img.naturalWidth}
       photoCanvas.width=Math.round(cw);photoCanvas.height=Math.round(ch)
@@ -678,6 +687,7 @@ export default function StudioPage(){
     }
     img.src=previewPhoto.url
     if(img.complete && img.naturalWidth > 0) img.onload?.(new Event('load') as any)
+    return ()=>{ cancelled=true; img.onload=null }
   },[previewPhoto?.id,previewPhoto?.url,previewPhoto?.filter,
      previewPhoto?.stamp.showDate,previewPhoto?.stamp.showTime,previewPhoto?.stamp.showLocation,
      previewPhoto?.stamp.locationText,previewPhoto?.stamp.customText,previewPhoto?.stamp.style,
@@ -755,16 +765,22 @@ export default function StudioPage(){
   // activePhoto — so the next filter landed on the photo just unchecked while
   // the UI showed a different one selected. Keep the edit target inside the
   // selection at all times.
+  // Adding or removing one photo from the selection.
+  //
+  // The preview follows the photo just tapped rather than staying on the first
+  // one chosen: tapping a photo and seeing a different one is disorienting, and
+  // it is what made the old preview bug so hard to tell apart from a glitch.
   const toggleSelect=(id:string)=>{
     const wasSelected=selectedIds.has(id)
     const next=new Set(selectedIds)
     if(wasSelected) next.delete(id); else next.add(id)
     setSelectedIds(next)
-    setPreviewIndex(0)
+    const remaining=Array.from(next)
     if(wasSelected){
-      const remaining=Array.from(next)
+      setPreviewIndex(0)
       setActivePhotoId(remaining.length>0?remaining[remaining.length-1]:null)
     }else{
+      setPreviewIndex(Math.max(0,remaining.indexOf(id)))
       setActivePhotoId(id)
     }
     setAddedState(false)
@@ -950,15 +966,22 @@ export default function StudioPage(){
                     const inOrder=photoInOrder(photo.id),isActive=photo.id===activePhotoId,isSel=selectedIds.has(photo.id)
                     return(
                       <div key={photo.id} style={{position:'relative'}}>
+                        {/* The visible box stays 22px, but the tappable area is padded
+                            out to ~44px — the smallest target a thumb reliably hits. */}
                         <div onClick={e=>{e.stopPropagation();toggleSelect(photo.id)}}
-                          style={{position:'absolute',top:6,left:6,width:22,height:22,borderRadius:5,border:`2px solid ${isSel?'#D97A43':'rgba(255,255,255,0.9)'}`,background:isSel?'#D97A43':'rgba(255,255,255,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:10,cursor:'pointer'}}>
-                          {isSel&&<span style={{color:'white',fontSize:12,fontWeight:700}}>✓</span>}
+                          style={{position:'absolute',top:0,left:0,width:44,height:44,padding:6,zIndex:10,cursor:'pointer'}}>
+                          <div style={{width:22,height:22,borderRadius:5,border:`2px solid ${isSel?'#D97A43':'rgba(255,255,255,0.9)'}`,background:isSel?'#D97A43':'rgba(255,255,255,0.5)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                            {isSel&&<span style={{color:'white',fontSize:12,fontWeight:700}}>✓</span>}
+                          </div>
                         </div>
                         <div onClick={()=>{
-                          // With photos checked the panel edits the selection. Focusing a
-                          // photo outside it would preview one photo while the controls
-                          // changed others, so clear the selection first.
-                          if(selectedIds.size>0&&!selectedIds.has(photo.id)) setSelectedIds(new Set())
+                          // Selection mode, as in a phone's photo library: once anything
+                          // is ticked, every tap adds or removes just that photo. Tapping
+                          // a photo used to clear the whole selection, which on a phone —
+                          // where the checkbox is a small target inside a large tile —
+                          // happened constantly and lost real work. Now nothing in the
+                          // grid can wipe a selection; only the Clear button does.
+                          if(selectedIds.size>0){ toggleSelect(photo.id); return }
                           setActivePhotoId(photo.id===activePhotoId?null:photo.id)
                           setAddedState(false)
                         }}
