@@ -32,6 +32,7 @@ export default function CheckoutPage() {
   const [orderId, setOrderId] = useState('')
   const [stripeReady, setStripeReady] = useState(false)
   const paymentRef = useRef<HTMLDivElement>(null)
+  const paymentElRef = useRef<{ unmount: () => void } | null>(null)
   const stripeStateRef = useRef<{ stripe: any; elements: any } | null>(null)
   const clientSecretRef = useRef<string | null>(null)
   const [shippingCents, setShippingCents] = useState<number | null>(null)
@@ -70,6 +71,23 @@ export default function CheckoutPage() {
   const lineCents = (item: { size: string; quantity: number }) =>
     getPricePerPrintCents(item.size, totalQty) * item.quantity
   const subtotalCents = cart.reduce((s, i) => s + lineCents(i), 0)
+
+  // One row per size, not one per photo. Each photo is its own cart item, so a
+  // twenty-print order rendered as twenty rows all reading "1x 4x6" print" —
+  // indistinguishable from each other and pushing the total far below the fold
+  // on a phone. Grouping collapses rows that differ by filter or stamp, which is
+  // fine here: this panel is for checking the money, and the studio still shows
+  // the per-photo detail. Price per size is uniform at any one cart quantity, so
+  // a grouped row is never a mix of prices.
+  const summaryRows = Array.from(
+    cart.reduce((acc, item) => {
+      const row = acc.get(item.size) ?? { size: item.size, quantity: 0, cents: 0 }
+      row.quantity += item.quantity
+      row.cents += lineCents(item)
+      acc.set(item.size, row)
+      return acc
+    }, new Map<string, { size: string; quantity: number; cents: number }>()).values()
+  ).sort((a, b) => b.cents - a.cents)
   // Must match what /api/checkout charged, or the Pay button lies about the
   // amount. The API sums in cents, so this does too.
   const totalCents =
@@ -173,11 +191,38 @@ export default function CheckoutPage() {
       const paymentEl = elements.create('payment')
       paymentEl.mount(paymentRef.current)
       paymentEl.on('ready', () => { if (!cancelled) setStripeReady(true) })
+      paymentElRef.current = paymentEl
       stripeStateRef.current = { stripe, elements }
     })()
 
     return () => { cancelled = true }
   }, [step])
+
+  /**
+   * Return to the shipping step from payment.
+   *
+   * There was no way back at all: the only control on the payment step was Pay,
+   * and the address was not even displayed, so a wrong ZIP was both invisible
+   * and uncorrectable. That matters more than a normal back button, because the
+   * address decides both where the parcel goes and how much sales tax is owed.
+   *
+   * Everything Stripe-related has to be torn down, not just hidden. The payment
+   * form is bound to a PaymentIntent created for the previous address, with that
+   * address's tax baked into the amount. Leaving it mounted would let someone
+   * edit their address and then pay a total calculated for the old one. Clearing
+   * these makes the mount effect build a fresh form against the new intent.
+   */
+  const editShipping = () => {
+    if (step === 'processing') return
+    try { paymentElRef.current?.unmount() } catch { /* already gone */ }
+    paymentElRef.current = null
+    stripeStateRef.current = null
+    clientSecretRef.current = null
+    setStripeReady(false)
+    setTaxCents(null)
+    setError('')
+    setStep('shipping')
+  }
 
   const handlePaymentSubmit = async () => {
     if (!stripeReady || !stripeStateRef.current) return
@@ -238,8 +283,13 @@ export default function CheckoutPage() {
             {['Shipping', 'Payment'].map((s, i) => {
               const active = (i === 0 && isShippingStep) || (i === 1 && (step === 'payment' || step === 'processing'))
               const done = i === 0 && (step === 'payment' || step === 'processing')
+              // The completed Shipping chip looked clickable and wasn't — it was
+              // plain markup. Now it does what it appears to do.
+              const goBack = i === 0 && done && step !== 'processing'
               return (
-                <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div key={s} onClick={goBack ? editShipping : undefined}
+                  role={goBack ? 'button' : undefined}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: goBack ? 'pointer' : 'default' }}>
                   <div style={{ width: 24, height: 24, borderRadius: '50%', background: done ? '#D97A43' : active ? '#2B2A28' : 'rgba(43,42,40,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: active || done ? '#F7F3EE' : '#8A6F5A' }}>
                     {done ? '✓' : i + 1}
                   </div>
@@ -385,6 +435,24 @@ export default function CheckoutPage() {
 
           {(step === 'payment' || step === 'processing') && (
             <div>
+              {/* Show what was entered. Until now the payment step displayed no
+                  address at all, so a typo could not be spotted before paying. */}
+              <div style={{ marginBottom: 20, padding: '14px 16px', background: '#EFE8DF', border: '1px solid rgba(43,42,40,0.1)', borderRadius: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 6 }}>
+                  <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#8A6F5A' }}>Shipping to</span>
+                  {step !== 'processing' && (
+                    <button onClick={editShipping} style={{ background: 'none', border: 'none', padding: 0, color: '#D97A43', fontSize: 12, fontFamily: 'inherit', textDecoration: 'underline', cursor: 'pointer' }}>
+                      Edit
+                    </button>
+                  )}
+                </div>
+                <p style={{ fontSize: 13, color: '#2B2A28', lineHeight: 1.5 }}>
+                  {shipping.name}<br />
+                  {shipping.line1}{shipping.line2 ? `, ${shipping.line2}` : ''}<br />
+                  {shipping.city}, {shipping.state} {shipping.zip}<br />
+                  <span style={{ color: '#8A6F5A' }}>{shipping.email}</span>
+                </p>
+              </div>
               {!stripeReady && (
                 <div style={{ textAlign: 'center', padding: '32px 0', color: '#8A6F5A', fontSize: 13 }}>
                   Loading payment form...
@@ -406,10 +474,10 @@ export default function CheckoutPage() {
         <div style={{ background: '#EFE8DF', borderRadius: 20, border: '1px solid rgba(43,42,40,0.08)', padding: 24, height: 'fit-content' }}>
           <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 20, fontWeight: 400, marginBottom: 16 }}>Order summary</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-            {cart.map((item, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                <span style={{ color: '#8A6F5A' }}>{item.quantity}× {item.size}" print</span>
-                <span style={{ fontWeight: 500 }}>{formatCents(lineCents(item))}</span>
+            {summaryRows.map(row => (
+              <div key={row.size} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                <span style={{ color: '#8A6F5A' }}>{row.quantity}× {row.size}" print</span>
+                <span style={{ fontWeight: 500 }}>{formatCents(row.cents)}</span>
               </div>
             ))}
           </div>
