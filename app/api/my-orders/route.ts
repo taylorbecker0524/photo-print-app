@@ -36,6 +36,15 @@ export async function GET(req: NextRequest) {
 
   // Read this user's orders with the service role (bypasses RLS).
   const admin = createClient(url, serviceKey, { auth: { persistSession: false } })
+  // Every time someone submits the shipping form we insert an order row, so an
+  // abandoned checkout — or simply going back to change something — leaves a
+  // row stuck at 'pending' forever. Showing those alongside real orders lists
+  // things the customer never bought as though they owe money for them.
+  //
+  // A genuinely-just-paid order also sits at 'pending' for the minute it takes
+  // Stripe's webhook to arrive, so recent ones are kept. An hour is far longer
+  // than that window and far shorter than anyone's patience for an abandoned
+  // cart.
   const { data, error } = await admin
     .from('orders')
     .select('id, status, total_cents, items, created_at, tracking_number, tracking_url')
@@ -47,8 +56,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to load orders' }, { status: 500 })
   }
 
+  // Drop abandoned checkouts. Filtered here rather than in the query: a
+  // malformed PostgREST filter would break the whole page, and this list is
+  // capped at 100 rows anyway.
+  const PENDING_GRACE_MS = 60 * 60 * 1000
+  const visible = (data ?? []).filter(o => {
+    if (o.status !== 'pending') return true
+    // A genuinely-just-paid order sits at 'pending' for the minute it takes
+    // Stripe's webhook to arrive, so keep recent ones.
+    const age = Date.now() - new Date(o.created_at).getTime()
+    return Number.isFinite(age) && age < PENDING_GRACE_MS
+  })
+
   const orders = await Promise.all(
-    (data ?? []).map(async (o: any) => {
+    visible.map(async (o: any) => {
       const items = Array.isArray(o.items) ? o.items : []
       // Signed thumbnail for the first photo (private bucket, 1h expiry).
       let thumbnailUrl: string | null = null
