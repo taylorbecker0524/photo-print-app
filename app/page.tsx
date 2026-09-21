@@ -1,6 +1,10 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { getWithTTL } from '@/lib/storage'
+
+// Must match SNAPSHOT_KEY in app/studio/page.tsx.
+const STUDIO_SNAPSHOT_KEY = 'archive-studio'
 
 const STORY = [
   '"nearing our daughter\'s first birthday, we wanted to archive all of our favorite moments — each beach trip, every christmas morning, her first steps, every ordinary tuesday that somehow felt extraordinary.',
@@ -21,6 +25,30 @@ const PHOTOS = [
 export default function HomePage() {
   const router = useRouter()
   const [isMobile, setIsMobile] = useState(false)
+  // null = nothing saved (or not checked yet); a number = prints waiting.
+  const [savedPrints, setSavedPrints] = useState<number | null>(null)
+
+  useEffect(() => {
+    try {
+      const snap = getWithTTL<{
+        photos?: unknown[]
+        orderItems?: Array<{ quantity?: number }>
+      }>(STUDIO_SNAPSHOT_KEY)
+      if (!snap?.photos?.length) return
+      const prints = (snap.orderItems ?? []).reduce((n, i) => n + (Number(i?.quantity) || 0), 0)
+      setSavedPrints(prints)
+    } catch {
+      // Storage can be unavailable (private browsing). Then there is simply
+      // nothing to resume, and the page behaves as it always did.
+    }
+  }, [])
+
+  const startFresh = () => {
+    try { localStorage.removeItem(STUDIO_SNAPSHOT_KEY) } catch {}
+    try { sessionStorage.removeItem(STUDIO_SNAPSHOT_KEY) } catch {}
+    setSavedPrints(null)
+    router.push('/studio')
+  }
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 680)
@@ -202,9 +230,22 @@ export default function HomePage() {
         <h1 style={{ fontFamily: 'Georgia, serif', fontSize: isMobile ? 'clamp(28px, 8vw, 38px)' : 'clamp(32px, 4vw, 52px)', fontWeight: 400, color: '#2B2A28', lineHeight: 1.08, marginBottom: 24 }}>
           Every photo tells a story.<br /><em style={{ color: '#8A6F5A' }}>Archive yours.</em>
         </h1>
+        {/* The studio keeps an unfinished order for seven days, but the only way
+            back into it was a button saying "Get started" — which reads like
+            throwing the order away and beginning again. Nobody part-way through
+            would trust it. When there is something to come back to, say so. */}
         <button onClick={() => router.push('/studio')} style={{ padding: '15px 48px', background: '#2B2A28', color: '#F7F3EE', border: 'none', borderRadius: 6, fontSize: 12, letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'Courier New, monospace', cursor: 'pointer', width: isMobile ? '100%' : 'auto', maxWidth: 340 }}>
-          Get started
+          {savedPrints === null
+            ? 'Get started'
+            : savedPrints > 0
+              ? `Continue your order · ${savedPrints} print${savedPrints === 1 ? '' : 's'}`
+              : 'Continue your photos'}
         </button>
+        {savedPrints !== null && (
+          <p style={{ marginTop: 12, fontSize: 12, color: '#8A6F5A', fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>
+            Your photos are still here. <button onClick={startFresh} style={{ background: 'none', border: 'none', padding: 0, color: '#D97A43', fontSize: 12, fontFamily: 'inherit', fontStyle: 'italic', textDecoration: 'underline', cursor: 'pointer' }}>Start a new order instead</button>
+          </p>
+        )}
       </div>
 
       {/* Already have an archive */}

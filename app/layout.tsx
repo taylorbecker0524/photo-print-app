@@ -43,7 +43,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}>
             <a href="/" style={{ fontFamily: 'Georgia, serif', fontSize: 24, letterSpacing: '0.1em', color: '#2B2A28', textDecoration: 'none', fontWeight: 400, flexShrink: 0 }}>archive</a>
             <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#8A6F5A' }}>Print - Preserve - Cherish</span>
-            <a href="/orders" style={{ fontFamily: 'Courier New, monospace', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#8A6F5A', textDecoration: 'none', flexShrink: 0 }}>track order</a>
+            {/* There was no link to the studio anywhere on the site, so leaving it
+                was a one-way trip: the only route back was a home-page button
+                labelled "Get started". */}
+            <div style={{ display: 'flex', gap: 14, flexShrink: 0 }}>
+              <a href="/studio" style={{ fontFamily: 'Courier New, monospace', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#8A6F5A', textDecoration: 'none' }}>your photos</a>
+              <a href="/orders" style={{ fontFamily: 'Courier New, monospace', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#8A6F5A', textDecoration: 'none' }}>track order</a>
+            </div>
           </div>
         </nav>
         <main style={{ width: '100%', boxSizing: 'border-box' }}>{children}</main>
@@ -54,6 +60,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               from anywhere on the site before they will activate a live account. */}
           <nav style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 18px', justifyContent: 'center', marginBottom: 12 }}>
             {[
+              { href: '/studio', label: 'Your photos' },
               { href: '/faq', label: 'FAQ' },
               { href: '/terms', label: 'Terms' },
               { href: '/privacy', label: 'Privacy' },
