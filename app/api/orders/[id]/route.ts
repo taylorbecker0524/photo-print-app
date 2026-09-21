@@ -17,6 +17,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const safeItems = order.items.map((item: any) => ({
       size: item.size, quantity: item.quantity, unit_price_cents: item.unit_price_cents,
     }))
+    // The status changes a minute after payment, when Stripe's webhook lands.
+    // Without this the browser may keep serving its first copy — which said the
+    // order was unpaid — even across a reload.
     return NextResponse.json({
       id: order.id, status: order.status,
       trackingNumber: order.tracking_number,
@@ -30,7 +33,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         state: order.shipping_address.state,
         country: order.shipping_address.country,
       },
-    })
+    }, { headers: { 'Cache-Control': 'no-store, max-age=0' } })
   } catch (err) {
     console.error('[orders]', err)
     return NextResponse.json({ error: 'Failed to fetch order' }, { status: 500 })
