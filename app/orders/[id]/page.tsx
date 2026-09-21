@@ -14,6 +14,19 @@ const STATUS_LABELS: Record<string, string> = {
   shipped: 'On its way', delivered: 'Delivered', cancelled: 'Cancelled',
 }
 
+/**
+ * What to call the status on screen.
+ *
+ * Somebody arriving straight from a successful payment is never told "Pending
+ * payment", even though that is genuinely the stored status for the minute it
+ * takes the webhook to arrive. Their money has left their account; telling them
+ * it has not invites a second payment or a support email.
+ */
+function statusLabel(status: string, justPaid: boolean): string {
+  if (justPaid && status === 'pending') return 'Confirming your order'
+  return STATUS_LABELS[status] ?? status
+}
+
 export default function OrderPage() {
   const params = useParams()
   const searchParams = useSearchParams()
@@ -21,9 +34,40 @@ export default function OrderPage() {
   const [loading, setLoading] = useState(true)
   const success = searchParams.get('success') === 'true'
 
+  // Payment is confirmed in the browser, but the status only advances when
+  // Stripe's webhook reaches our server a moment later — about a minute in
+  // practice. Two things used to go wrong in that window. The fetch carried no
+  // cache instruction and the API returned no cache headers, so Safari served
+  // its stored copy and a reload did not necessarily shake it loose: an order
+  // could read "Pending payment" indefinitely after being paid for. And even
+  // with fresh data, that is a terrible thing to show someone who has just paid
+  // — the natural response is to pay again.
+  //
+  // So: never cache, and keep asking until the status moves.
   useEffect(() => {
     if (!params.id) return
-    fetch(`/api/orders/${params.id}`).then(r => r.json()).then(data => { setOrder(data); setLoading(false) }).catch(() => setLoading(false))
+    let cancelled = false
+    let attempts = 0
+
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/orders/${params.id}`, { cache: 'no-store' })
+        const data = await res.json()
+        if (cancelled) return
+        setOrder(data)
+        setLoading(false)
+        // Stop once the webhook has landed, or after ~90s of trying. A stuck
+        // order is real and rare; polling forever would not fix it.
+        if (data?.status && data.status !== 'pending') return
+        if (++attempts > 30) return
+        setTimeout(load, 3000)
+      } catch {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    load()
+    return () => { cancelled = true }
   }, [params.id])
 
   const stepIdx = order ? STATUS_STEPS.indexOf(order.status) : -1
@@ -52,7 +96,7 @@ export default function OrderPage() {
               <p style={{ fontSize: 12, color: '#8A6F5A', fontFamily: 'monospace', marginTop: 4 }}>#{order.id.slice(0,8).toUpperCase()}</p>
             </div>
             <div style={{ padding: '6px 14px', borderRadius: 20, background: order.status === 'delivered' ? '#D4EDDA' : '#EFE8DF', fontSize: 11, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: order.status === 'delivered' ? '#155724' : '#8A6F5A' }}>
-              {STATUS_LABELS[order.status] ?? order.status}
+              {statusLabel(order.status, success)}
             </div>
           </div>
 
