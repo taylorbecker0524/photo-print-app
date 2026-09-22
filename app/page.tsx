@@ -1,6 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { getWithTTL } from '@/lib/storage'
 
 // Must match SNAPSHOT_KEY in app/studio/page.tsx.
@@ -22,9 +22,21 @@ const PHOTOS = [
   { src: '/photos/photo6.jpg', stamp: '7 - 12 - 24', cap: null, loc: 'Chesapeake Bay, MD', rot: 2, stampPos: 'br' },
 ]
 
+// Natural size of the desktop scrapbook row, measured in the browser: the eight
+// items come to 1538px wide including the extra width their rotation adds, and
+// 312px tall. ROW_NATURAL_W leaves room beyond that so `space-between` still
+// puts real air between the prints rather than butting them together.
+const ROW_NATURAL_W = 1660
+
 export default function HomePage() {
   const router = useRouter()
   const [isMobile, setIsMobile] = useState(false)
+  const [viewportW, setViewportW] = useState(0)
+  // The row's unscaled height is whatever its tallest item needs. Measuring it
+  // beats hard-coding: a guess that came up short cropped the story note, and
+  // the number would go stale the moment a photo or card changed size.
+  const photoRowRef = useRef<HTMLDivElement | null>(null)
+  const [rowNaturalH, setRowNaturalH] = useState(0)
   // null = nothing saved (or not checked yet); a number = prints waiting.
   const [savedPrints, setSavedPrints] = useState<number | null>(null)
 
@@ -51,11 +63,36 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 680)
+    const check = () => {
+      setIsMobile(window.innerWidth < 680)
+      setViewportW(window.innerWidth)
+    }
     check()
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
+
+  // The desktop scrapbook is a fixed composition — eight items at hand-picked
+  // sizes and angles — that used to be laid out at its natural size and simply
+  // clipped by `overflow: hidden` when the window was narrower than it. On a
+  // 1440px laptop that meant the last print was sliced in half by the right
+  // edge. Scaling the whole row as one unit keeps every print on screen at any
+  // width and preserves the composition exactly, instead of reflowing it into
+  // something that no longer reads as a row of photos on a table.
+  const photoScale = viewportW ? Math.min(1.8, Math.max(0.28, (viewportW - 24) / ROW_NATURAL_W)) : 1
+
+  // offsetHeight is the pre-transform layout height, so this stays correct no
+  // matter what scale is applied.
+  useEffect(() => {
+    const el = photoRowRef.current
+    if (!el) return
+    const measure = () => setRowNaturalH(el.offsetHeight)
+    measure()
+    // Fonts and images land after first paint and can change the tallest item.
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
+    ro?.observe(el)
+    return () => ro?.disconnect()
+  }, [isMobile])
 
   // FIX 7: notecard typography helper
   // Bigger size, no italic on body, darker color for contrast.
@@ -146,9 +183,16 @@ export default function HomePage() {
       </div>
 
 
-      {/* DESKTOP — single horizontal row */}
+      {/* DESKTOP — single horizontal row.
+          The outer element clips and reserves the scaled height; the inner one
+          keeps the composition at its natural size and is scaled as a unit.
+          alignItems must be flex-start: the default `stretch` would make the
+          inner row inherit the outer's height, and since the outer's height is
+          derived from the inner's, the two feed back into each other — the band
+          collapsed below 1700px and ran to tens of thousands of pixels above. */}
       {!isMobile && (
-        <div style={{ background: '#EDE6DC', width: '100%', padding: '32px 0 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0, overflowX: 'hidden' }}>
+        <div style={{ background: '#EDE6DC', width: '100%', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', height: rowNaturalH ? Math.round(rowNaturalH * photoScale) : undefined }}>
+        <div ref={photoRowRef} style={{ width: ROW_NATURAL_W, flexShrink: 0, padding: '34px 0 30px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0, transform: `scale(${photoScale})`, transformOrigin: 'top center' }}>
 
           {/* Photo 1 */}
           <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-3.5deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: '1%' }}>
@@ -219,6 +263,7 @@ export default function HomePage() {
             <div style={{ position: 'absolute', bottom: 7, left: 0, right: 0, textAlign: 'center', fontSize: 8.5, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>first christmas</div>
           </div>
 
+        </div>
         </div>
       )}
 
