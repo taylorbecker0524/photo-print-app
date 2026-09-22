@@ -36,6 +36,11 @@ export default function CheckoutPage() {
   const stripeStateRef = useRef<{ stripe: any; elements: any } | null>(null)
   const clientSecretRef = useRef<string | null>(null)
   const [shippingCents, setShippingCents] = useState<number | null>(null)
+  // Promotional code. The browser only ever carries the typed string and what
+  // the server said it was worth — never a discount it worked out for itself.
+  const [promoCode, setPromoCode] = useState('')
+  const [promoError, setPromoError] = useState('')
+  const [promoFreedCents, setPromoFreedCents] = useState(0)
   // Sales tax is worked out server-side from the shipping address, so it is
   // unknown until /api/checkout answers. null means "not known yet" and renders
   // nothing, which is honest; 0 means "known, and none is owed".
@@ -91,7 +96,9 @@ export default function CheckoutPage() {
   // Must match what /api/checkout charged, or the Pay button lies about the
   // amount. The API sums in cents, so this does too.
   const totalCents =
-    shippingCents !== null ? subtotalCents + shippingCents + (taxCents ?? 0) : subtotalCents
+    shippingCents !== null
+      ? Math.max(0, subtotalCents - promoFreedCents) + shippingCents + (taxCents ?? 0)
+      : subtotalCents
 
   const handleShippingSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -147,18 +154,48 @@ export default function CheckoutPage() {
           },
           shippingCents: liveShippingCents,
           finish,
+          promoCode: promoCode.trim() || undefined,
         }),
       })
-      if (!res.ok) throw new Error(await res.text())
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        // A rejected code belongs beside the code box, not in the page-level
+        // error banner — otherwise "That code has expired" reads as though the
+        // whole order failed.
+        if (data?.field === 'promoCode') {
+          setPromoError(data.error || 'That code could not be applied.')
+          setStep('shipping')
+          return
+        }
+        throw new Error(data?.error || 'Something went wrong')
+      }
+      setPromoError('')
       setOrderId(data.orderId)
-      clientSecretRef.current = data.clientSecret
       if (typeof data.breakdown?.tax === 'number') {
         setTaxCents(data.breakdown.tax)
       }
       if (typeof data.breakdown?.shipping === 'number') {
         setShippingCents(data.breakdown.shipping)
       }
+      if (typeof data.breakdown?.promoFreedCents === 'number') {
+        setPromoFreedCents(data.breakdown.promoFreedCents)
+      }
+
+      // A wholly promotional order costs nothing, so there is nothing to pay
+      // for. Stripe cannot take a zero-amount payment; the server has already
+      // placed and fulfilled the order, so go straight to tracking it rather
+      // than showing a payment form that would have nothing to collect.
+      if (data.free) {
+        const { clearStored } = await import('@/lib/storage')
+        clearStored('print-cart')
+        clearStored('print-finish')
+        // Same destination and query flag the card path lands on, so the order
+        // page shows "Confirming your order" rather than a bare pending state.
+        router.push(`/orders/${data.orderId}?success=true`)
+        return
+      }
+
+      clientSecretRef.current = data.clientSecret
       setStep('payment')
     } catch (err: any) {
       setError(err.message ?? 'Something went wrong')
@@ -407,6 +444,24 @@ export default function CheckoutPage() {
                     <option value="US">United States</option>
                   </select>
                 </div>
+                {/* Promotion code. Optional, and deliberately quiet: a prominent
+                    empty discount box makes every customer without one feel they
+                    are paying too much, and sends them off to hunt for a code
+                    instead of finishing the order. */}
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label style={labelStyle}>Promo code <span style={{ textTransform: 'none', letterSpacing: 0, fontStyle: 'italic' }}>(optional)</span></label>
+                  <input
+                    style={{ ...inputStyle, textTransform: 'uppercase', ...(promoError ? { borderColor: '#C0392B' } : {}) }}
+                    value={promoCode}
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    onChange={e => { setPromoCode(e.target.value); if (promoError) setPromoError('') }}
+                  />
+                  {promoError && (
+                    <p style={{ fontSize: 12, color: '#C0392B', margin: '6px 0 0' }}>{promoError}</p>
+                  )}
+                </div>
               </div>
               <button
                 type="submit"
@@ -491,6 +546,12 @@ export default function CheckoutPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#8A6F5A' }}>
               <span>Subtotal</span><span>{formatCents(subtotalCents)}</span>
             </div>
+            {promoFreedCents > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#D97A43' }}>
+                <span>{promoCode.trim().toUpperCase()} · free prints</span>
+                <span>-{formatCents(promoFreedCents)}</span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#8A6F5A' }}>
               <span>Shipping</span>
               <span>
