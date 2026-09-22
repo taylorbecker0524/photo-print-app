@@ -15,27 +15,44 @@ export async function sendOrderConfirmation({
   orderId,
   items,
   totalCents,
+  taxCents = 0,
+  shippingCents,
 }: {
   email: string
   orderId: string
   items: Array<{ size: string; quantity: number; unit_price_cents: number }>
   totalCents: number
+  taxCents?: number
+  shippingCents?: number
 }) {
-  const itemRows = items
+  // One row per size, not one per photo. Each photo is its own cart item, so a
+  // twenty-print order used to list twenty identical-looking rows.
+  const bySize = new Map<string, { quantity: number; cents: number }>()
+  for (const i of items) {
+    const row = bySize.get(i.size) ?? { quantity: 0, cents: 0 }
+    row.quantity += i.quantity
+    row.cents += i.unit_price_cents * i.quantity
+    bySize.set(i.size, row)
+  }
+  const itemRows = Array.from(bySize.entries())
+    .sort((a, b) => b[1].cents - a[1].cents)
     .map(
-      (i) =>
+      ([size, row]) =>
         `<tr>
-          <td style="padding:8px 0;border-bottom:1px solid #f0ede8">${i.quantity}× ${i.size}" print</td>
-          <td style="padding:8px 0;border-bottom:1px solid #f0ede8;text-align:right">$${((i.unit_price_cents * i.quantity) / 100).toFixed(2)}</td>
+          <td style="padding:8px 0;border-bottom:1px solid #f0ede8">${row.quantity}× ${size}" print</td>
+          <td style="padding:8px 0;border-bottom:1px solid #f0ede8;text-align:right">$${(row.cents / 100).toFixed(2)}</td>
         </tr>`
     )
     .join('')
 
-  // Shipping is charged dynamically (Prodigi quote, with a flat fallback), so it
-  // isn't a fixed constant. Derive the exact amount the customer paid from the
-  // stored order total minus the item subtotal instead of hardcoding a value.
+  // This used to derive shipping as "total minus items", which quietly became
+  // wrong the moment we started collecting sales tax: the tax landed inside the
+  // shipping line, overstating postage and hiding the tax entirely. A receipt
+  // from a business that collects sales tax has to show that tax on its own
+  // line. Both figures are passed in now; the subtraction is only a fallback for
+  // an older order that predates them.
   const itemsSubtotalCents = items.reduce((sum, i) => sum + i.unit_price_cents * i.quantity, 0)
-  const shippingCents = Math.max(0, totalCents - itemsSubtotalCents)
+  const shipping = shippingCents ?? Math.max(0, totalCents - itemsSubtotalCents - taxCents)
 
   await resend.emails.send({
     from: FROM,
@@ -55,8 +72,12 @@ export async function sendOrderConfirmation({
             ${itemRows}
             <tr>
               <td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#8A6F5A">Shipping</td>
-              <td style="padding:8px 0;border-bottom:1px solid #f0ede8;text-align:right;color:#8A6F5A">$${(shippingCents / 100).toFixed(2)}</td>
+              <td style="padding:8px 0;border-bottom:1px solid #f0ede8;text-align:right;color:#8A6F5A">$${(shipping / 100).toFixed(2)}</td>
             </tr>
+            ${taxCents > 0 ? `<tr>
+              <td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#8A6F5A">Sales tax</td>
+              <td style="padding:8px 0;border-bottom:1px solid #f0ede8;text-align:right;color:#8A6F5A">$${(taxCents / 100).toFixed(2)}</td>
+            </tr>` : ''}
             <tr>
               <td style="padding:12px 0 0;font-weight:600">Total</td>
               <td style="padding:12px 0 0;text-align:right;font-weight:600">$${(totalCents / 100).toFixed(2)}</td>
@@ -64,6 +85,7 @@ export async function sendOrderConfirmation({
           </table>
           <div style="margin-top:32px;padding:20px;background:#EFE8DF;border-radius:6px;font-family:sans-serif;font-size:13px">
             <strong>Order reference:</strong> #${orderId.slice(0, 8).toUpperCase()}<br>
+            <span style="color:#8A6F5A">This charge appears on your statement as ARCHIVEYOURS.</span><br>
             <a href="${APP_URL}/orders/${orderId}" style="color:#D97A43;text-decoration:none;margin-top:8px;display:inline-block">
               Track your order →
             </a>
