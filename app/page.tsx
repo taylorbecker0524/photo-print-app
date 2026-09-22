@@ -7,7 +7,7 @@ import { getWithTTL } from '@/lib/storage'
 const STUDIO_SNAPSHOT_KEY = 'archive-studio'
 
 const STORY = [
-  '"nearing our daughter\'s first birthday, we wanted to archive all of our favorite moments — each beach trip, every christmas morning, her first steps, every ordinary tuesday that somehow felt extraordinary.',
+  '"nearing our daughter\'s first birthday, we wanted to archive all of our favorite moments — each beach trip, every holiday, her first steps, every ordinary tuesday that somehow felt extraordinary.',
   'we started printing her photos and stamping each one with the date and location it was taken. so that someday, when she holds a print in her hands, she can be taken right back to that moment.',
   'we can\'t freeze time. but we can preserve it.',
   'that\'s why archive exists."'
