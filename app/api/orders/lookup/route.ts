@@ -41,6 +41,17 @@ export async function POST(req: NextRequest) {
 
     const orders = (data ?? []).map((o: any) => {
       const items = Array.isArray(o.items) ? o.items : []
+      // Group by size, as the checkout summary does. Each photo is its own item,
+      // so a twenty-print order produced twenty repetitions of '1x 4x6"'.
+      const bySize = new Map<string, number>()
+      for (const i of items) {
+        const size = String(i?.size ?? '')
+        bySize.set(size, (bySize.get(size) ?? 0) + (Number(i?.quantity) || 0))
+      }
+      const itemSummary = Array.from(bySize.entries())
+        .filter(([size]) => size)
+        .map(([size, qty]) => `${qty}× ${size}"`)
+        .join(', ')
       return {
         id: o.id,
         status: o.status,
@@ -48,9 +59,7 @@ export async function POST(req: NextRequest) {
         createdAt: o.created_at,
         hasTracking: !!o.tracking_url,
         itemCount: items.reduce((s: number, i: any) => s + (i.quantity ?? 0), 0),
-        itemSummary: items
-          .map((i: any) => `${i.quantity}× ${i.size}"`)
-          .join(', '),
+        itemSummary,
       }
     })
 
