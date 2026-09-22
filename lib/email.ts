@@ -27,20 +27,25 @@ export async function sendOrderConfirmation({
 }) {
   // One row per size, not one per photo. Each photo is its own cart item, so a
   // twenty-print order used to list twenty identical-looking rows.
-  const bySize = new Map<string, { quantity: number; cents: number }>()
+  // Promotional prints are grouped separately from paid ones of the same size.
+  // Merged, a receipt for five paid and ten free 4x6 prints reads "15x 4x6
+  // print $4.45", which looks like a pricing error rather than a gift.
+  const bySize = new Map<string, { size: string; free: boolean; quantity: number; cents: number }>()
   for (const i of items) {
-    const row = bySize.get(i.size) ?? { quantity: 0, cents: 0 }
+    const free = (i as any).promo_free === true || i.unit_price_cents === 0
+    const key = `${i.size}|${free ? 'free' : 'paid'}`
+    const row = bySize.get(key) ?? { size: i.size, free, quantity: 0, cents: 0 }
     row.quantity += i.quantity
     row.cents += i.unit_price_cents * i.quantity
-    bySize.set(i.size, row)
+    bySize.set(key, row)
   }
-  const itemRows = Array.from(bySize.entries())
-    .sort((a, b) => b[1].cents - a[1].cents)
+  const itemRows = Array.from(bySize.values())
+    .sort((a, b) => b.cents - a.cents)
     .map(
-      ([size, row]) =>
+      row =>
         `<tr>
-          <td style="padding:8px 0;border-bottom:1px solid #f0ede8">${row.quantity}× ${size}" print</td>
-          <td style="padding:8px 0;border-bottom:1px solid #f0ede8;text-align:right">$${(row.cents / 100).toFixed(2)}</td>
+          <td style="padding:8px 0;border-bottom:1px solid #f0ede8">${row.quantity}× ${row.size}" print${row.free ? ' <span style="color:#D97A43">(free)</span>' : ''}</td>
+          <td style="padding:8px 0;border-bottom:1px solid #f0ede8;text-align:right">${row.free ? '<span style="color:#D97A43">FREE</span>' : `$${(row.cents / 100).toFixed(2)}`}</td>
         </tr>`
     )
     .join('')
