@@ -88,7 +88,9 @@ export default function HomePage() {
   return (
     <div style={{ width: '100%', overflowX: 'hidden' }}>
 
-      {/* How it works bar */}
+      {/* How it works bar. Every step is a link into the studio, the same place
+          the Get started button goes: people read these four words to decide
+          whether to try it, so a tap on one was a dead end. */}
       <div style={{ background: '#EFE8DF', borderBottom: '1px solid rgba(43,42,40,0.08)', padding: '10px 0', width: '100%', display: 'flex', alignItems: 'center' }}>
         {[
           { n: '1', title: 'Upload', sub: 'photos' },
@@ -96,15 +98,53 @@ export default function HomePage() {
           { n: '3', title: 'Print', sub: 'any size' },
           { n: '4', title: 'Ship', sub: 'to your door' },
         ].map((step, i) => (
-          <div key={i} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRight: i < 3 ? '1px solid rgba(43,42,40,0.1)' : 'none' }}>
+          <a
+            key={i}
+            href="/studio"
+            className="howto-step"
+            aria-label={`Start your order — step ${step.n}, ${step.title} ${step.sub}`}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRight: i < 3 ? '1px solid rgba(43,42,40,0.1)' : 'none', alignSelf: 'stretch', padding: '4px 0' }}
+          >
             <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#F7F3EE', border: '1px solid rgba(43,42,40,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Courier New, monospace', fontSize: 9, color: '#8A6F5A', flexShrink: 0 }}>{step.n}</div>
             <div>
               <div style={{ fontFamily: 'Courier New, monospace', fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#2B2A28' }}>{step.title}</div>
               <div style={{ fontSize: 9, color: '#8A6F5A', fontStyle: 'italic' }}>{step.sub}</div>
             </div>
-          </div>
+          </a>
         ))}
       </div>
+
+      {/* Hero. This used to sit at the very bottom, under the whole photo wall,
+          so on a phone the only button on the page was ~100px below the fold:
+          you landed on four step labels and a long first-person story with
+          nothing to act on. Offer first, story after — the collage below is
+          the proof, not the gatekeeper. */}
+      <div style={{ background: '#F7F3EE', padding: isMobile ? '32px 20px 30px' : '48px 24px 44px', textAlign: 'center', borderBottom: '1px solid rgba(43,42,40,0.07)', width: '100%' }}>
+        <h1 style={{ fontFamily: 'Georgia, serif', fontSize: isMobile ? 'clamp(28px, 8vw, 38px)' : 'clamp(32px, 4vw, 52px)', fontWeight: 400, color: '#2B2A28', lineHeight: 1.08, marginBottom: 14 }}>
+          Every photo tells a story.<br /><em style={{ color: '#8A6F5A' }}>Archive yours.</em>
+        </h1>
+        <p style={{ fontFamily: 'Georgia, serif', fontSize: isMobile ? 15 : 17, color: '#8A6F5A', lineHeight: 1.5, margin: '0 auto 26px', maxWidth: 440 }}>
+          The date and location stamped on every print — just like old
+          disposable cameras.
+        </p>
+        {/* The studio keeps an unfinished order for seven days, but the only way
+            back into it was a button saying "Get started" — which reads like
+            throwing the order away and beginning again. Nobody part-way through
+            would trust it. When there is something to come back to, say so. */}
+        <button onClick={() => router.push('/studio')} style={{ padding: '15px 48px', background: '#2B2A28', color: '#F7F3EE', border: 'none', borderRadius: 6, fontSize: 12, letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'Courier New, monospace', cursor: 'pointer', width: isMobile ? '100%' : 'auto', maxWidth: 340 }}>
+          {savedPrints === null
+            ? 'Get started'
+            : savedPrints > 0
+              ? `Continue your order · ${savedPrints} print${savedPrints === 1 ? '' : 's'}`
+              : 'Continue your photos'}
+        </button>
+        {savedPrints !== null && (
+          <p style={{ marginTop: 12, fontSize: 12, color: '#8A6F5A', fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>
+            Your photos are still here. <button onClick={startFresh} style={{ background: 'none', border: 'none', padding: 0, color: '#D97A43', fontSize: 12, fontFamily: 'inherit', fontStyle: 'italic', textDecoration: 'underline', cursor: 'pointer' }}>Start a new order instead</button>
+          </p>
+        )}
+      </div>
+
 
       {/* DESKTOP — single horizontal row */}
       {!isMobile && (
@@ -224,29 +264,6 @@ export default function HomePage() {
           </div>
         </div>
       )}
-
-      {/* Hero */}
-      <div style={{ background: '#F7F3EE', padding: isMobile ? '36px 20px 28px' : '44px 24px 36px', textAlign: 'center', borderTop: '1px solid rgba(43,42,40,0.07)', width: '100%' }}>
-        <h1 style={{ fontFamily: 'Georgia, serif', fontSize: isMobile ? 'clamp(28px, 8vw, 38px)' : 'clamp(32px, 4vw, 52px)', fontWeight: 400, color: '#2B2A28', lineHeight: 1.08, marginBottom: 24 }}>
-          Every photo tells a story.<br /><em style={{ color: '#8A6F5A' }}>Archive yours.</em>
-        </h1>
-        {/* The studio keeps an unfinished order for seven days, but the only way
-            back into it was a button saying "Get started" — which reads like
-            throwing the order away and beginning again. Nobody part-way through
-            would trust it. When there is something to come back to, say so. */}
-        <button onClick={() => router.push('/studio')} style={{ padding: '15px 48px', background: '#2B2A28', color: '#F7F3EE', border: 'none', borderRadius: 6, fontSize: 12, letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'Courier New, monospace', cursor: 'pointer', width: isMobile ? '100%' : 'auto', maxWidth: 340 }}>
-          {savedPrints === null
-            ? 'Get started'
-            : savedPrints > 0
-              ? `Continue your order · ${savedPrints} print${savedPrints === 1 ? '' : 's'}`
-              : 'Continue your photos'}
-        </button>
-        {savedPrints !== null && (
-          <p style={{ marginTop: 12, fontSize: 12, color: '#8A6F5A', fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>
-            Your photos are still here. <button onClick={startFresh} style={{ background: 'none', border: 'none', padding: 0, color: '#D97A43', fontSize: 12, fontFamily: 'inherit', fontStyle: 'italic', textDecoration: 'underline', cursor: 'pointer' }}>Start a new order instead</button>
-          </p>
-        )}
-      </div>
 
       {/* Already have an archive */}
       <div style={{ background: '#EFE8DF', padding: '18px 20px', borderTop: '1px solid rgba(43,42,40,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap', width: '100%' }}>

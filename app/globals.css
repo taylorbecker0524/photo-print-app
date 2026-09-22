@@ -54,3 +54,20 @@ body {
 }
 
 .fade-up { animation: fadeUp 0.5s ease forwards; }
+
+
+/* The four "how it works" steps on the home page are links into the studio.
+   Inline styles cannot express hover or focus, so the affordance lives here. */
+.howto-step {
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.howto-step:hover {
+  background-color: rgba(43, 42, 40, 0.05);
+}
+.howto-step:focus-visible {
+  outline: 2px solid #D97A43;
+  outline-offset: -2px;
+}
