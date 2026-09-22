@@ -118,7 +118,15 @@ export async function POST(req: NextRequest) {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: total,
       currency: 'usd',
-      receipt_email: email,
+      // Deliberately NOT setting receipt_email. Stripe sends its own receipt to
+      // that address whenever it is present — regardless of the "Successful
+      // payments" switch in the dashboard, which is why turning that off did not
+      // stop the duplicate. We send our own confirmation from the webhook, which
+      // itemises the order, shows the sales tax and links to order tracking, so
+      // a second Stripe receipt is noise arriving moments later.
+      //
+      // The card statement still reads ARCHIVEYOURS and our own email says so,
+      // which is what actually prevents "I don't recognise this charge" disputes.
       // The webhook needs the calculation id to record the tax transaction
       // once payment succeeds; carrying it on the intent keeps the two in step.
       metadata: { email, finish, shippingMethod, taxCalculationId: taxCalculationId ?? '' },
