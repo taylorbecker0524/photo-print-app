@@ -80,6 +80,17 @@ export async function GET(req: NextRequest) {
           .createSignedUrl(firstPath, 60 * 60)
         thumbnailUrl = signed?.signedUrl ?? null
       }
+      // Group by size, as the checkout summary does. Each photo is its own item,
+      // so a twenty-print order produced twenty repetitions of '1x 4x6"'.
+      const bySize = new Map<string, number>()
+      for (const i of items) {
+        const size = String(i?.size ?? '')
+        bySize.set(size, (bySize.get(size) ?? 0) + (Number(i?.quantity) || 0))
+      }
+      const itemSummary = Array.from(bySize.entries())
+        .filter(([size]) => size)
+        .map(([size, qty]) => `${qty}× ${size}"`)
+        .join(', ')
       return {
         id: o.id,
         status: o.status,
@@ -87,7 +98,7 @@ export async function GET(req: NextRequest) {
         createdAt: o.created_at,
         trackingUrl: o.tracking_url,
         itemCount: items.reduce((s: number, i: any) => s + (i.quantity ?? 0), 0),
-        itemSummary: items.map((i: any) => `${i.quantity}× ${i.size}"`).join(', '),
+        itemSummary,
         thumbnailUrl,
       }
     })
