@@ -20,23 +20,49 @@ export async function POST(req: NextRequest) {
   try {
     const { createClient } = await import('@supabase/supabase-js')
 
+    // Both refusals below are 401, but they mean different things to the person
+    // reading them: one has never signed in, the other signed in a while ago and
+    // their session has lapsed. `reason` lets the page tell them apart and react
+    // — a lapsed session should quietly offer a fresh link, not accuse someone of
+    // not being signed in when they plainly were.
     const authHeader = req.headers.get('authorization') ?? ''
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
     if (!token) {
-      return NextResponse.json({ error: 'Please sign in to see your orders' }, { status: 401 })
+      return NextResponse.json(
+        {
+          error: 'You need to sign in to see your orders.',
+          reason: 'not_signed_in',
+          detail: 'This page shows order history, so we have to know who is asking. Enter your email and we will send you a sign-in link.',
+        },
+        { status: 401 }
+      )
     }
 
     const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     if (!url || !anonKey || !serviceKey) {
-      return NextResponse.json({ error: 'Server not configured' }, { status: 500 })
+      console.error('[orders/lookup] missing Supabase environment variables')
+      return NextResponse.json(
+        {
+          error: 'We could not load your orders just now. Please try again shortly.',
+          reason: 'server_misconfigured',
+        },
+        { status: 500 }
+      )
     }
 
     const authClient = createClient(url, anonKey, { auth: { persistSession: false } })
     const { data: { user }, error: userErr } = await authClient.auth.getUser(token)
     if (userErr || !user?.email) {
-      return NextResponse.json({ error: 'Please sign in to see your orders' }, { status: 401 })
+      return NextResponse.json(
+        {
+          error: 'Your sign-in has expired. Please request a new link.',
+          reason: 'session_expired',
+          detail: 'Sign-in links do not last forever. Enter your email again and we will send a fresh one.',
+        },
+        { status: 401 }
+      )
     }
     const email = user.email.toLowerCase()
 
