@@ -43,8 +43,8 @@ export async function GET(req: NextRequest) {
   const { createServerSupabase } = await import('@/lib/supabase')
   const {
     estimateProductCostCents,
+    estimateShippingCostCents,
     estimateStripeFeeCents,
-    PRODIGI_SHIPPING_COST_CENTS,
     PRODIGI_TAX_RATE,
   } = await import('@/lib/costs')
 
@@ -94,7 +94,10 @@ export async function GET(req: NextRequest) {
     const productCost = estimateProductCostCents(items)
     // We only pay Prodigi once the order is actually placed with them.
     const reachedProdigi = Boolean(o.prodigi_order_id)
-    const shippingCost = reachedProdigi ? PRODIGI_SHIPPING_COST_CENTS : 0
+    // Charged per parcel, and an order mixing small prints with large ones
+    // ships in two. Counting one parcel here overstated net by $7.22 on the
+    // first real order.
+    const shippingCost = reachedProdigi ? estimateShippingCostCents(items) : 0
     const prodigiTax = Math.round((productCost + shippingCost) * PRODIGI_TAX_RATE)
     const stripeFee = estimateStripeFeeCents(gross)
 
