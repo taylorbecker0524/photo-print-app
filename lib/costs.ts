@@ -19,11 +19,55 @@ export const PRODIGI_UNIT_COST_CENTS: Record<string, number> = {
 }
 
 /**
- * Prodigi's Budget shipping is a flat rate per parcel — their price sheet
- * lists a "plus one shipping price" of $0.00, meaning extra prints add nothing.
- * One order equals one parcel equals one charge.
+ * Prodigi's Budget shipping is a flat rate PER PARCEL — extra prints inside a
+ * parcel add nothing. The trap is the parcel count.
+ *
+ * This used to assume one order equals one parcel. The first real invoice
+ * (order 14543270, 21 Sep 2026) disproved that: a 20-print order containing
+ * 4x6s, a 5x5 and an 8x8 was billed $13.42 shipping — two parcels at $6.71,
+ * not one. Prodigi prints the larger sizes on different equipment and ships
+ * them separately, so an order that mixes small and large prints gets charged
+ * twice. Assuming one parcel overstated that order's profit by $7.22.
  */
-export const PRODIGI_SHIPPING_COST_CENTS = 670
+export const PRODIGI_SHIPPING_COST_CENTS = 671
+
+/**
+ * Sizes Prodigi ships as their own parcel, separate from the small prints.
+ *
+ * Inferred from a single invoice, so treat it as a best guess: it is right
+ * that mixed small/large orders ship in two parcels, but the exact dividing
+ * line will only be confirmed by more invoices. Erring towards more parcels is
+ * the safer error — it understates profit rather than overstating it.
+ */
+const LARGE_FORMAT_SIZES = new Set(['8x10', 'square-8'])
+
+/**
+ * How many parcels Prodigi will split an order into, and so how many times the
+ * flat shipping rate is charged.
+ */
+export function estimateParcelCount(
+  items: Array<{ size?: string; quantity?: number }> | null | undefined
+): number {
+  if (!Array.isArray(items) || items.length === 0) return 0
+  let small = false
+  let large = false
+  for (const item of items) {
+    if ((Number(item?.quantity) || 0) <= 0) continue
+    if (LARGE_FORMAT_SIZES.has(item?.size ?? '')) large = true
+    else small = true
+  }
+  const parcels = (small ? 1 : 0) + (large ? 1 : 0)
+  // Every order that reaches Prodigi ships at least once, even if the size key
+  // is one this file has never seen.
+  return parcels || 1
+}
+
+/** Estimated Prodigi shipping for a set of order items. */
+export function estimateShippingCostCents(
+  items: Array<{ size?: string; quantity?: number }> | null | undefined
+): number {
+  return estimateParcelCount(items) * PRODIGI_SHIPPING_COST_CENTS
+}
 
 /**
  * Sales tax Prodigi charges us on the wholesale purchase. Derived from a real
