@@ -104,6 +104,21 @@ export async function POST(req: NextRequest) {
       orderId: order.id,
       items: order.items,
       totalCents: order.total_cents,
+      // Pass these rather than letting the email infer them. It used to derive
+      // shipping as "total minus items", which silently folded the sales tax
+      // into the postage line once we started collecting tax.
+      taxCents: Number(order.tax_cents) || 0,
+      shippingCents: Math.max(
+        0,
+        Number(order.total_cents) -
+          (Array.isArray(order.items)
+            ? order.items.reduce(
+                (sum: number, i: any) => sum + (Number(i.unit_price_cents) || 0) * (Number(i.quantity) || 0),
+                0
+              )
+            : 0) -
+          (Number(order.tax_cents) || 0)
+      ),
     })
   } catch (emailErr) {
     console.error('[webhook] confirmation email failed for order', order.id, emailErr)
