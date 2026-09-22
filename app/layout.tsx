@@ -42,13 +42,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             boxSizing: 'border-box',
           }}>
             <a href="/" style={{ fontFamily: 'Georgia, serif', fontSize: 24, letterSpacing: '0.1em', color: '#2B2A28', textDecoration: 'none', fontWeight: 400, flexShrink: 0 }}>archive</a>
-            <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#8A6F5A' }}>Print - Preserve - Cherish</span>
+            {/* globals.css has always had a rule to show this only from 640px up,
+                but the class was never applied — so the tagline rendered on phones
+                too, competing for a 390px-wide bar. It survived until a third link
+                was added and the row finally wrapped. Hidden by default now; the
+                media query switches it back on where there is room. */}
+            <span className="nav-tagline" style={{ display: 'none', fontFamily: 'Courier New, monospace', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#8A6F5A', whiteSpace: 'nowrap' }}>Print - Preserve - Cherish</span>
             {/* There was no link to the studio anywhere on the site, so leaving it
                 was a one-way trip: the only route back was a home-page button
                 labelled "Get started". */}
-            <div style={{ display: 'flex', gap: 14, flexShrink: 0 }}>
-              <a href="/studio" style={{ fontFamily: 'Courier New, monospace', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#8A6F5A', textDecoration: 'none' }}>your photos</a>
-              <a href="/orders" style={{ fontFamily: 'Courier New, monospace', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#8A6F5A', textDecoration: 'none' }}>track order</a>
+            <div style={{ display: 'flex', gap: 14, flexShrink: 0, alignItems: 'center' }}>
+              <a href="/studio" style={{ fontFamily: 'Courier New, monospace', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#8A6F5A', textDecoration: 'none', whiteSpace: 'nowrap' }}>your photos</a>
+              <a href="/orders" style={{ fontFamily: 'Courier New, monospace', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#8A6F5A', textDecoration: 'none', whiteSpace: 'nowrap' }}>track order</a>
             </div>
           </div>
         </nav>
