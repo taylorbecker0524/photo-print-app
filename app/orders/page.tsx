@@ -59,10 +59,24 @@ export default function TrackOrderPage() {
         })
         const data = await res.json()
         if (!active) return
-        if (!res.ok) { setError(data?.error ?? 'Could not load your orders.'); return }
+        if (!res.ok) {
+          // A rejected token used to leave the page claiming "Signed in as ..."
+          // above an error, with nothing to click. If the session is no longer
+          // good, say so and put the sign-in form back.
+          if (res.status === 401) {
+            setSignedInAs(null)
+            setError(data?.error ?? 'Your sign-in has expired. Please request a new link.')
+            return
+          }
+          setError(data?.error ?? 'Could not load your orders.')
+          return
+        }
         setOrders(data.orders ?? [])
       } catch {
-        if (active) { setSignedInAs(null) }
+        if (active) {
+          setSignedInAs(null)
+          setError('We could not reach the server. Please check your connection and try again.')
+        }
       }
     })()
     return () => { active = false }
@@ -72,6 +86,7 @@ export default function TrackOrderPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setOrders(null)
     try {
       const { error: otpErr } = await getSupabase().auth.signInWithOtp({
         email,
