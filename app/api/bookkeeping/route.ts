@@ -66,6 +66,7 @@ export async function GET(req: NextRequest) {
     'gross_charged', 'tax_collected', 'product_revenue', 'shipping_charged',
     'est_product_cost', 'est_shipping_cost', 'est_prodigi_tax', 'est_stripe_fee',
     'est_total_cost', 'est_net', 'est_margin_pct',
+    'promo_code',
     'stripe_payment_intent', 'prodigi_order_id', 'tracking_number',
   ]
 
@@ -125,6 +126,9 @@ export async function GET(req: NextRequest) {
       money(totalCost),
       money(net),
       marginPct,
+      // Which influencer's code this order came from, if any. The whole point
+      // of issuing codes is being able to answer that at the end of a campaign.
+      o.promo_code ?? '',
       o.stripe_payment_intent_id ?? '',
       o.prodigi_order_id ?? '',
       o.tracking_number ?? '',
