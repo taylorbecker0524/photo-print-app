@@ -786,6 +786,43 @@ export default function StudioPage(){
     setAddedState(false)
   }
 
+  // Select or clear every photo at once.
+  //
+  // Lives beside toggleSelect because it has to do the same bookkeeping: the
+  // right-hand panel edits activePhoto, so leaving activePhotoId outside the
+  // selection is what previously made a filter land on the wrong photo.
+  const allSelected = photos.length>0 && selectedIds.size===photos.length
+  const toggleSelectAll=()=>{
+    if(allSelected){
+      setSelectedIds(new Set())
+      setActivePhotoId(null)
+      setPreviewIndex(0)
+      setAddedState(false)
+      return
+    }
+    const ids=photos.map(p=>p.id)
+    setSelectedIds(new Set(ids))
+    setPreviewIndex(0)
+    setActivePhotoId(ids[0] ?? null)
+    setAddedState(false)
+  }
+
+  // Per-batch select, for when photos arrived in more than one upload. Stamping
+  // "Cornwall" onto every photo is the common case for one batch and wrong for
+  // two, so a whole-library select is not enough on its own.
+  const toggleSelectSession=(photoIds:string[])=>{
+    const ids=photos.filter(p=>photoIds.includes(p.id)).map(p=>p.id)
+    if(ids.length===0) return
+    const everyOneIn=ids.every(id=>selectedIds.has(id))
+    const next=new Set(selectedIds)
+    for(const id of ids){ if(everyOneIn) next.delete(id); else next.add(id) }
+    setSelectedIds(next)
+    const remaining=Array.from(next)
+    setPreviewIndex(0)
+    setActivePhotoId(remaining.length>0?remaining[0]:null)
+    setAddedState(false)
+  }
+
   const addToOrder=(photo:Photo)=>{
     setOrderItems(prev=>{
       const existing=prev.find(i=>i.photoId===photo.id&&i.size===photo.size&&i.filter===photo.filter&&JSON.stringify(i.stamp)===JSON.stringify(photo.stamp))
@@ -921,6 +958,14 @@ export default function StudioPage(){
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:8}}>
         <h2 style={{fontFamily:'Georgia, serif',fontSize:26,fontWeight:400,color:'#2B2A28'}}>Your photos</h2>
         <div style={{display:'flex',gap:8}}>
+          {/* Sits with the actions rather than beside the "Your photos" heading:
+              a control next to a heading makes the heading look clickable, and
+              splits what is one toolbar into two. */}
+          <button onClick={toggleSelectAll} disabled={!!importState}
+            style={{...C.ghost,fontSize:11,padding:'8px 14px',opacity:importState?0.5:1,cursor:importState?'wait':'pointer',
+              ...(allSelected?{borderColor:'#D97A43',color:'#D97A43'}:{})}}>
+            {allSelected?'Deselect all':`Select all ${photos.length}`}
+          </button>
           <input ref={addMoreRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>handleInitialFiles(e.target.files)}/>
           <button onClick={()=>addMoreRef.current?.click()} disabled={!!importState} style={{...C.ghost,fontSize:11,padding:'8px 14px',opacity:importState?0.5:1,cursor:importState?'wait':'pointer'}}>+ Add more</button>
         </div>
@@ -960,6 +1005,16 @@ export default function StudioPage(){
                   <button onClick={()=>{setRenameValue(session.name);setSessions(prev=>prev.map(s=>s.id===session.id?{...s,isRenaming:true}:s))}}
                     style={{background:'none',border:'none',cursor:'pointer',fontSize:11,color:'#8A6F5A',fontFamily:'Courier New, monospace',textDecoration:'underline'}}>rename</button>
                   <span style={{fontFamily:'Courier New, monospace',fontSize:10,color:'#C4B5A5'}}>{sp.length} photos</span>
+                  {/* Only worth showing once there is more than one batch to
+                      tell apart — with a single batch the header button above
+                      already selects everything, and two controls doing the
+                      same thing is just noise. */}
+                  {sessions.length>1&&(
+                    <button onClick={()=>toggleSelectSession(session.photoIds)}
+                      style={{background:'none',border:'none',cursor:'pointer',fontSize:11,color:'#8A6F5A',fontFamily:'Courier New, monospace',textDecoration:'underline'}}>
+                      {sp.every(p=>selectedIds.has(p.id))?'deselect these':'select these'}
+                    </button>
+                  )}
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(130px, 1fr))',gap:12}}>
                   {sp.map(photo=>{
