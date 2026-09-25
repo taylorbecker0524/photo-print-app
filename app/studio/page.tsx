@@ -2,7 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getPricePerPrintCents, getNextTier, MIN_ORDER_QTY, SHIPPING_FLAT_CENTS, formatCents } from '@/lib/pricing'
-import { putPreview, getPreviews, prunePreviews } from '@/lib/photoStore'
+import { putPreview, putPrint, getPreviews, getPrints, prunePreviews } from '@/lib/photoStore'
 import { setWithTTL, getWithTTL, clearStored } from '@/lib/storage'
 
 type Filter = 'original' | 'film' | 'sepia' | 'bw' | 'faded' | 'vivid' | 'cool'
@@ -438,21 +438,36 @@ export default function StudioPage(){
   const [hydrated,setHydrated] = useState(false)
 
   useEffect(()=>{
+    // restoreStartedRef alone guarantees this runs once, so there is no second
+    // run to cancel. There used to be a `cancelled` flag as well, and in
+    // development it broke restore outright: React deliberately mounts effects
+    // twice, the cleanup set cancelled=true, and the one real run then skipped
+    // both setPhotos and setHydrated — leaving a studio that showed the empty
+    // upload screen while the saved order sat in storage untouched. Production
+    // does not double-mount so it worked there, which is the worst kind of bug:
+    // one you can only see in the environment where you are not looking.
     if(restoreStartedRef.current) return
     restoreStartedRef.current = true
-    let cancelled = false
     ;(async()=>{
       try{
         const snap = getWithTTL<StudioSnapshot>(SNAPSHOT_KEY)
         if(!snap || !snap.photos?.length) return
-        const previews = await getPreviews(snap.photos.map(p=>p.id))
-        if(cancelled) return
+        const ids = snap.photos.map(p=>p.id)
+        const [previews, prints] = await Promise.all([getPreviews(ids), getPrints(ids)])
         const restored: Photo[] = snap.photos.flatMap(p=>{
           const blob = previews.get(p.id)
           // No preview means nothing to show. Dropping it is better than a blank
           // tile, which is the bug we just spent the morning removing.
           if(!blob) return []
-          return [{...p, url: URL.createObjectURL(blob)}]
+          // The print copy is what makes this photo orderable again. Wrapping it
+          // back into a File lets the rest of the studio and checkout treat a
+          // restored photo exactly like a freshly picked one, with no special
+          // cases anywhere downstream.
+          const print = prints.get(p.id)
+          const file = print
+            ? new File([print], p.fileName || 'photo.jpg', { type: print.type || 'image/jpeg' })
+            : undefined
+          return [{...p, url: URL.createObjectURL(blob), file}]
         })
         if(restored.length===0) return
         const liveIds = new Set(restored.map(p=>p.id))
@@ -468,10 +483,9 @@ export default function StudioPage(){
           .map(i=>({...i, url: restored.find(p=>p.id===i.photoId)!.url})))
         if(snap.finish==='lustre'||snap.finish==='gloss') setFinish(snap.finish)
       } finally {
-        if(!cancelled) setHydrated(true)
+        setHydrated(true)
       }
     })()
-    return ()=>{ cancelled = true }
   },[])
 
   // Save after every change. Only metadata goes here — the images live in
@@ -561,6 +575,27 @@ export default function StudioPage(){
         let locationText='',hasExifLocation=false
         if(exif.lat!==null&&exif.lon!==null){locationText=await reverseGeocode(exif.lat,exif.lon);hasExifLocation=!!locationText}
         if(prep.blob) void putPreview(id,prep.blob)
+        // Make and keep the print-quality copy now, in the background.
+        //
+        // A preview is all that used to survive a reload, and a preview cannot
+        // be printed — so returning to a saved cart produced an order that
+        // could be rebuilt but not placed. Doing this at import means the bytes
+        // are already there when someone comes back tomorrow. It is the same
+        // work checkout would have done, moved earlier, so nothing is wasted.
+        //
+        // Deliberately not awaited: the grid paints as soon as the preview is
+        // ready, exactly as before, and this lands a few seconds later. A
+        // reload inside that window falls back to the re-add prompt.
+        void (async()=>{
+          try{
+            const {compressForPrint} = await import('@/lib/compress')
+            const out = await compressForPrint(f)
+            await putPrint(id, out.blob)
+          }catch{
+            // Storage full, private mode, a codec that will not decode: none of
+            // these should interrupt an import. The re-add prompt covers it.
+          }
+        })()
         return{width:prep.w,height:prep.h,id,file:f,fileName:f.name,url:prep.url,sessionId,filter:'original' as Filter,
           stamp:{...DEFAULT_STAMP,capturedAt:exif.date,hasExifDate:!!exif.date,hasExifLocation,locationText,showDate:!!exif.date,showLocation:hasExifLocation},size:'4x6'}
       }))
@@ -823,6 +858,48 @@ export default function StudioPage(){
     setAddedState(false)
   }
 
+  // Re-adding one photo whose print-quality copy did not survive.
+  //
+  // Browsers clear site storage whenever they like, and a photo imported just
+  // before a reload may not have finished its print copy. When that happens the
+  // studio still shows the picture but cannot print it. This used to surface as
+  // a filename at the checkout button, with no way to act on it — which is no
+  // use at all when every file is called "Screenshot 2026-09-22 at 1.35.37 PM".
+  // Now the tile itself says so, and this puts the photo back in one tap.
+  const reAddRef = useRef<HTMLInputElement|null>(null)
+  const reAddTargetRef = useRef<string|null>(null)
+  const needsReAdd = (photo:Photo)=> !photo.file && !photo.uploadedPath
+  const photosNeedingReAdd = photos.filter(needsReAdd)
+
+  const startReAdd=(photoId:string)=>{
+    reAddTargetRef.current = photoId
+    reAddRef.current?.click()
+  }
+
+  const handleReAddFile=async(files:FileList|null)=>{
+    const id = reAddTargetRef.current
+    reAddTargetRef.current = null
+    const f = files?.[0]
+    if(!id || !f) return
+    if(!f.type.startsWith('image/')) return
+    const prep = await preparePhoto(f)
+    if(prep.blob) void putPreview(id, prep.blob)
+    void (async()=>{
+      try{
+        const {compressForPrint} = await import('@/lib/compress')
+        const out = await compressForPrint(f)
+        await putPrint(id, out.blob)
+      }catch{ /* the tile stays flagged, which is the honest outcome */ }
+    })()
+    // Replace the picture as well as the file: someone re-picking a photo may
+    // well choose a different one, and showing the old thumbnail against new
+    // print data would be a lie about what gets printed.
+    setPhotos(prev=>prev.map(p=>p.id===id
+      ? {...p, file:f, fileName:f.name, url:prep.url, width:prep.w, height:prep.h, uploadedPath:undefined}
+      : p))
+    setOrderItems(prev=>prev.map(i=>i.photoId===id?{...i, url:prep.url, fileName:f.name}:i))
+  }
+
   const addToOrder=(photo:Photo)=>{
     setOrderItems(prev=>{
       const existing=prev.find(i=>i.photoId===photo.id&&i.size===photo.size&&i.filter===photo.filter&&JSON.stringify(i.stamp)===JSON.stringify(photo.stamp))
@@ -873,7 +950,11 @@ export default function StudioPage(){
         // of it, which is nowhere near print quality. Say which photo, so the
         // fix is obvious rather than a puzzle.
         if(!photo.file){
-          throw new Error(`"${photo.fileName}" needs to be added again before checkout — reopen it from your photo library.`)
+          // A backstop. The tile is flagged and there is a banner at the top of
+          // the studio, so reaching here means both were ignored — say where to
+          // look rather than naming a file the customer cannot pick out of a
+          // grid of identically named screenshots.
+          throw new Error(`One of your photos needs adding again before it can be printed. Scroll up — it is marked "Needs re-adding" with a button to fix it.`)
         }
         const compressed = await compressForPrint(photo.file)
         const path = await uploadCompressed(compressed.blob, photo.fileName)
@@ -985,6 +1066,23 @@ export default function StudioPage(){
         </div>
       )}
 
+      {/* Say it here, on arrival, rather than at the checkout button. Finding out
+          that an order cannot be placed only after building the whole thing is
+          what made this infuriating rather than merely inconvenient. */}
+      {photosNeedingReAdd.length>0&&(
+        <div style={{marginBottom:16,background:'#FDF3E7',border:'1px solid #E8A33D',borderRadius:10,padding:'12px 14px'}}>
+          <p style={{fontFamily:'Georgia, serif',fontSize:14,color:'#2B2A28',marginBottom:4}}>
+            {photosNeedingReAdd.length===1?'One photo needs':`${photosNeedingReAdd.length} photos need`} to be added again
+          </p>
+          <p style={{fontSize:12,color:'#8A6F5A',lineHeight:1.5}}>
+            Your browser kept a small copy to show you, but not one big enough to print.
+            The {photosNeedingReAdd.length===1?'photo is':'photos are'} marked below — tap <strong>Re-add</strong> on {photosNeedingReAdd.length===1?'it':'each'} to pick {photosNeedingReAdd.length===1?'it':'them'} again.
+          </p>
+        </div>
+      )}
+      <input ref={reAddRef} type="file" accept="image/*" style={{display:'none'}}
+        onChange={e=>{void handleReAddFile(e.target.files); e.target.value=''}}/>
+
       {/* FIX 15: removed the duplicate dark mobile filter bar — the right-panel Filter card covers mobile too */}
 
       <div style={{display:'grid',gridTemplateColumns:activePhotoId||selectedIds.size>0?'minmax(0,1fr) 320px':'1fr',gap:20}} className="studio-grid">
@@ -1045,6 +1143,13 @@ export default function StudioPage(){
                           <img src={photo.url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
                         </div>
                         {inOrder>0&&<div style={{position:'absolute',top:-6,right:-6,width:22,height:22,background:'#D97A43',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'white',border:'2px solid #F7F3EE',zIndex:10}}>{inOrder}</div>}
+                        {needsReAdd(photo)&&(
+                          <div style={{position:'absolute',inset:0,background:'rgba(43,42,40,0.62)',borderRadius:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6,zIndex:11,padding:6,textAlign:'center'}}>
+                            <span style={{fontFamily:'Courier New, monospace',fontSize:9,letterSpacing:'0.06em',textTransform:'uppercase',color:'#F7F3EE'}}>Needs re-adding</span>
+                            <button onClick={e=>{e.stopPropagation();startReAdd(photo.id)}}
+                              style={{background:'#D97A43',color:'#F7F3EE',border:'none',borderRadius:6,padding:'6px 12px',fontSize:11,fontFamily:'Courier New, monospace',letterSpacing:'0.06em',textTransform:'uppercase',cursor:'pointer'}}>Re-add</button>
+                          </div>
+                        )}
                         {isTooSmallForPrint(photo.size,photo.width,photo.height)&&(
                           <div title="Low resolution - may print blurry at this size" style={{ position: "absolute", bottom: 6, right: 6, width: 19, height: 19, borderRadius: "50%", background: "#E8A33D", color: "#3A2A10", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, boxShadow: "0 1px 3px rgba(0,0,0,.3)" }}>!</div>
                         )}
