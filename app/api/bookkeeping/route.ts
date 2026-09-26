@@ -13,8 +13,16 @@ export const dynamic = 'force-dynamic'
 // a shared secret in BOOKKEEPING_TOKEN. Treat the URL as a password: anyone
 // holding it can read the order book.
 //
-//   /api/bookkeeping?token=...          paid orders onward (default)
+//   /api/bookkeeping?token=...          real paid orders onward (default)
 //   /api/bookkeeping?token=...&all=1    include abandoned 'pending' carts too
+//   /api/bookkeeping?token=...&tests=1  include orders flagged is_test
+//
+// Orders placed while testing the site are still real rows — they have Stripe
+// payment intents and, in some cases, real Prodigi print jobs — so they are
+// flagged rather than deleted. Deleting them would break reconciliation against
+// Stripe and Prodigi later, and there is no undo. Flag a test order with:
+//
+//   update orders set is_test = true where id = '<order id>';
 //
 // Costs are estimates from lib/costs.ts, not invoices. They are close enough
 // to steer pricing decisions and far cheaper than bookkeeping software, but
@@ -38,7 +46,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const includeAbandoned = new URL(req.url).searchParams.get('all') === '1'
+  const params = new URL(req.url).searchParams
+  const includeAbandoned = params.get('all') === '1'
+  const includeTests = params.get('tests') === '1'
 
   const { createServerSupabase } = await import('@/lib/supabase')
   const {
@@ -53,6 +63,10 @@ export async function GET(req: NextRequest) {
   // 'pending' means the customer never completed payment — an abandoned cart,
   // not a sale. Excluded by default so the sheet reflects actual business.
   if (!includeAbandoned) query = query.neq('status', 'pending')
+  // Orders placed while testing are not business. Written as an OR rather than
+  // neq('is_test', true) because in Postgres NULL <> true is NULL, which would
+  // silently drop every row written before the column existed.
+  if (!includeTests) query = query.or('is_test.is.null,is_test.eq.false')
 
   const { data: orders, error } = await query
   if (error) {
@@ -68,6 +82,9 @@ export async function GET(req: NextRequest) {
     'est_total_cost', 'est_net', 'est_margin_pct',
     'promo_code',
     'stripe_payment_intent', 'prodigi_order_id', 'tracking_number',
+    // Last on purpose: the bookkeeping sheet addresses columns by letter, so a
+    // new field anywhere else would silently re-point every formula.
+    'is_test',
   ]
 
   const rows = (orders ?? []).map((o: any) => {
@@ -132,6 +149,7 @@ export async function GET(req: NextRequest) {
       o.stripe_payment_intent_id ?? '',
       o.prodigi_order_id ?? '',
       o.tracking_number ?? '',
+      o.is_test ? 'true' : 'false',
     ]
   })
 
