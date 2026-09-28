@@ -24,7 +24,24 @@ export function createServerSupabase() {
   if (!url || !key) {
     throw new Error(`Missing Supabase env vars. URL: ${!!url}, KEY: ${!!key}`)
   }
-  return createClient(url, key, { auth: { persistSession: false } })
+  return createClient(url, key, {
+    auth: { persistSession: false },
+    global: {
+      // supabase-js talks to PostgREST over fetch(), and the Next App Router
+      // memoises fetch() responses in its Data Cache. A route marked
+      // force-dynamic is still served a cached ROW: /api/orders/[id] kept
+      // reporting status 'pending' for an order the database had already moved
+      // to 'processing', so the status page sat on "Confirming your order"
+      // through reloads while the customer's confirmation email was already in
+      // their inbox. Setting no-store on the response only tells the browser;
+      // it does nothing about the cache on our side of the wire.
+      //
+      // Nothing this client reads is cacheable — every query is live order
+      // state that changed seconds ago — so opt the whole client out here
+      // rather than relying on each new route to remember.
+      fetch: (input: any, init?: any) => fetch(input, { ...(init ?? {}), cache: 'no-store' }),
+    },
+  })
 }
 
 export function createBrowserSupabase() {
