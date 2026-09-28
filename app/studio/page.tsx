@@ -4,27 +4,19 @@ import { useRouter } from 'next/navigation'
 import { getPricePerPrintCents, getNextTier, MIN_ORDER_QTY, SHIPPING_FLAT_CENTS, formatCents } from '@/lib/pricing'
 import { putPreview, putPrint, getPreviews, getPrints, prunePreviews } from '@/lib/photoStore'
 import { setWithTTL, getWithTTL, clearStored } from '@/lib/storage'
+// Stamp geometry, filters and the print renderer live in one module so the
+// preview below and the file Prodigi receives are drawn by the same code.
+import {
+  FILTERS, getFCss, STAMP_FONTS, getStampFont,
+  fmtDate, fmtTime, effectiveCapturedAt, drawStamp, renderForPrint,
+} from '@/lib/printRender'
+import type { Filter, StampStyle, StampPos, StampFont, StampConfig } from '@/lib/printRender'
 
-type Filter = 'original' | 'film' | 'sepia' | 'bw' | 'faded' | 'vivid' | 'cool'
-type StampStyle = 'burn' | 'overlay' | 'none'
-type StampPos = 'bl' | 'br' | 'tl' | 'tr'
-type StampLocation = 'front' | 'back'
-type StampFont = 'classic' | 'pixel' | 'typewriter'  // FIX 16
-type StampConfig = {
-  showDate: boolean; showTime: boolean; showLocation: boolean
-  locationText: string; customText: string; style: StampStyle
-  position: StampPos; capturedAt: string | null
-  capturedAtOverride: string | null  // FIX 17a: bulk override, preserves original capturedAt
-  hasExifDate: boolean; hasExifLocation: boolean
-  dateFormat: 'modern' | 'classic'
-  stampLocation: StampLocation
-  stampFont: StampFont
-}
 // `file` is absent on a photo restored after leaving the page: the browser will
 // not hand a File back to us. Such a photo can still be shown and re-ordered as
-// long as it was uploaded before, which `uploadedPath` records. `fileName` is
+// long as it was uploaded before, which `uploadedPaths` records. `fileName` is
 // kept separately because it has to outlive the File.
-type Photo = {width?:number;height?:number; id: string; file?: File; fileName: string; uploadedPath?: string; url: string; sessionId: string; filter: Filter; stamp: StampConfig; size: string }
+type Photo = {width?:number;height?:number; id: string; file?: File; fileName: string; uploadedPaths?: Record<string,string>; url: string; sessionId: string; filter: Filter; stamp: StampConfig; size: string }
 type OrderItem = { id: string; photoId: string; url: string; fileName: string; filter: Filter; stamp: StampConfig; size: string; quantity: number }
 type Session = { id: string; name: string; date: Date; photoIds: string[]; isRenaming: boolean }
 
@@ -42,16 +34,6 @@ const SIZES = [
   { key: '8x10', label: '8x10"' }, { key: 'square-4', label: '4x4"' },
   { key: 'square-5', label: '5x5"' }, { key: 'square-8', label: '8x8"' },
 ]
-const FILTERS: { key: Filter; label: string; css: string }[] = [
-  { key: 'original', label: 'Original', css: 'none' },
-  { key: 'film', label: 'Film', css: 'sepia(0.2) contrast(1.1) saturate(0.9) brightness(0.95)' },
-  { key: 'sepia', label: 'Sepia', css: 'sepia(0.85) contrast(1.05)' },
-  { key: 'bw', label: 'B&W', css: 'grayscale(1) contrast(1.1)' },
-  { key: 'faded', label: 'Faded', css: 'contrast(0.85) saturate(0.7) brightness(1.05)' },
-  { key: 'vivid', label: 'Vivid', css: 'saturate(1.4) contrast(1.1)' },
-  { key: 'cool', label: 'Cool', css: 'saturate(0.9) hue-rotate(15deg) brightness(1.02)' },
-]
-const getFCss = (f: Filter) => FILTERS.find(x => x.key === f)?.css ?? 'none'
 // Per-print price in dollars, from the single source of truth in lib/pricing —
 // so the studio always shows exactly what checkout will charge.
 // Money stays in whole cents until it is printed, so displayed lines always
@@ -59,16 +41,6 @@ const getFCss = (f: Filter) => FILTERS.find(x => x.key === f)?.css ?? 'none'
 const fmtSession = (d: Date) => d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 
 // FIX 4: classic format is now MM DD YYYY (was DD MM YYYY)
-const fmtDate = (iso: string, fmt: 'modern'|'classic' = 'classic') => {
-  const d = new Date(iso)
-  return fmt === 'classic'
-    ? `${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getDate()).padStart(2,'0')} ${d.getFullYear()}`
-    : d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
-}
-const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})
-
-// FIX 17a: effective date = override if set, else original capturedAt
-const effectiveCapturedAt = (s:StampConfig): string | null => s.capturedAtOverride ?? s.capturedAt
 
 /**
  * Smallest pixel dimensions we will print a size at without saying something:
@@ -270,48 +242,9 @@ const DEFAULT_STAMP: StampConfig = {
   showDate:false,showTime:false,showLocation:false,locationText:'',customText:'',
   style:'burn',position:'bl',capturedAt:null,capturedAtOverride:null,
   hasExifDate:false,hasExifLocation:false,
-  dateFormat:'classic',stampLocation:'front',stampFont:'classic'
+  dateFormat:'classic',stampFont:'classic'
 }
 
-// FIX 16: three curated stamp font options. css = canvas font string; webFont = Google Font CSS family
-const STAMP_FONTS: { key: StampFont; label: string; family: string; weight: number; sizeMult: number }[] = [
-  { key: 'classic',    label: 'Classic burn (LCD)',    family: '"Share Tech Mono", "Courier New", monospace', weight: 400, sizeMult: 1.0 },
-  { key: 'pixel',      label: 'Pixel print',           family: '"VT323", "Courier New", monospace',           weight: 400, sizeMult: 1.35 },
-  { key: 'typewriter', label: 'Typewriter (vintage)',  family: '"Special Elite", Georgia, serif',             weight: 400, sizeMult: 1.05 },
-]
-const getStampFont = (key: StampFont) => STAMP_FONTS.find(f=>f.key===key) ?? STAMP_FONTS[0]
-
-// FIX 5: build lines for FRONT stamp (date+time on separate lines for vertical layout)
-// FIX 5: build lines for BACK stamp (date+time on SAME line)
-function buildStampLinesForFront(stamp:StampConfig):string[]{
-  const lines:string[]=[]
-  const cap = effectiveCapturedAt(stamp)
-  if(stamp.showDate&&cap){
-    lines.push(fmtDate(cap, stamp.dateFormat??'classic'))
-    if(stamp.showTime) lines.push(fmtTime(cap))
-  } else if(stamp.showTime&&cap) {
-    lines.push(fmtTime(cap))
-  }
-  if(stamp.showLocation&&stamp.locationText) lines.push(stamp.locationText)
-  if(stamp.customText) lines.push(stamp.customText)
-  return lines
-}
-function buildStampLinesForBack(stamp:StampConfig):string[]{
-  const lines:string[]=[]
-  const fmt=stamp.dateFormat??'classic'
-  const cap = effectiveCapturedAt(stamp)
-  // FIX 5: date + time joined on one line for back of photo
-  if(stamp.showDate&&cap&&stamp.showTime){
-    lines.push(`${fmtDate(cap, fmt)}   ${fmtTime(cap)}`)
-  } else if(stamp.showDate&&cap){
-    lines.push(fmtDate(cap, fmt))
-  } else if(stamp.showTime&&cap){
-    lines.push(fmtTime(cap))
-  }
-  if(stamp.showLocation&&stamp.locationText) lines.push(stamp.locationText)
-  if(stamp.customText) lines.push(stamp.customText)
-  return lines
-}
 
 const C = {
   card:{background:'#EFE8DF',border:'0.5px solid rgba(43,42,40,0.1)',borderRadius:12,overflow:'hidden'} as React.CSSProperties,
@@ -337,9 +270,8 @@ function StampBullets({stamp,filter}:{stamp:StampConfig;filter:Filter}){
   if(stamp.showTime&&cap) items.push(fmtTime(cap))
   if(stamp.showLocation&&stamp.locationText) items.push(stamp.locationText)
   if(stamp.customText) items.push(stamp.customText)
-  if(stamp.style!=='none'||stamp.stampLocation==='back'){
-    if(stamp.stampLocation==='back') items.push('Back of photo (plain black text)')
-    else items.push(`${stamp.style==='burn'?'Classic burn':'Overlay'} - ${stamp.position==='bl'?'bottom left':stamp.position==='br'?'bottom right':stamp.position==='tl'?'top left':'top right'}`)
+  if(stamp.style!=='none'){
+    items.push(`${stamp.style==='burn'?'Classic burn':'Overlay'} - ${stamp.position==='bl'?'bottom left':stamp.position==='br'?'bottom right':stamp.position==='tl'?'top left':'top right'}`)
   }
   if(filter!=='original') items.push(`${FILTERS.find(f=>f.key===filter)?.label} filter`)
   return (
@@ -367,7 +299,6 @@ export default function StudioPage(){
   const [orderItems,setOrderItems]=useState<OrderItem[]>([])
   const [activePhotoId,setActivePhotoId]=useState<string|null>(null)
   const [previewIndex,setPreviewIndex]=useState(0)
-  const [previewSide,setPreviewSide]=useState<'front'|'back'>('front')
   const [selectedIds,setSelectedIds]=useState<Set<string>>(new Set())
   const [renameValue,setRenameValue]=useState('')
   const [addedState,setAddedState]=useState(false)
@@ -530,10 +461,6 @@ export default function StudioPage(){
   const softCount=orderItems.filter(i=>{const p=photos.find(ph=>ph.id===i.photoId);return p?isTooSmallForPrint(i.size,p.width,p.height):false}).length
   const isMultiSelect = selectedIds.size > 1
 
-  useEffect(()=>{
-    if(previewPhoto?.stamp.stampLocation==='back') setPreviewSide('back')
-    else setPreviewSide('front')
-  },[previewPhoto?.stamp.stampLocation,activePhotoId])
 
   // FIX 9: Derive bulk control values from the actual state of selected photos.
   // If all selected photos share a value, that value is "selected". If they
@@ -547,7 +474,6 @@ export default function StudioPage(){
   const bulkSharedFilter = sharedValue(selectedPhotos, p=>p.filter)
   const bulkSharedStyle = sharedValue(selectedPhotos, p=>p.stamp.style)
   const bulkSharedSize = sharedValue(selectedPhotos, p=>p.size)
-  const bulkSharedStampLocation = sharedValue(selectedPhotos, p=>p.stamp.stampLocation)
   const bulkSharedShowDate = sharedValue(selectedPhotos, p=>p.stamp.showDate)
   const bulkSharedShowTime = sharedValue(selectedPhotos, p=>p.stamp.showTime)
   const bulkSharedShowLocation = sharedValue(selectedPhotos, p=>p.stamp.showLocation)
@@ -645,34 +571,6 @@ export default function StudioPage(){
     const parent=photoCanvas.parentElement
     const maxW=Math.min(parent?.clientWidth??700,700),maxH=420
 
-    if(previewSide==='back'){
-      // Render paper-back surface on the photo canvas; clear stamp canvas
-      const aspect = 4/6
-      let cw=Math.min(maxW,500), ch=cw/aspect
-      if(ch>maxH){ch=maxH;cw=ch*aspect}
-      photoCanvas.width=Math.round(cw);photoCanvas.height=Math.round(ch)
-      stampCanvas.width=Math.round(cw);stampCanvas.height=Math.round(ch)
-      const ctx=photoCanvas.getContext('2d')!
-      ctx.fillStyle='#F2EBDD';ctx.fillRect(0,0,cw,ch)
-      const grd=ctx.createRadialGradient(cw/2,ch/2,Math.min(cw,ch)*0.3,cw/2,ch/2,Math.max(cw,ch)*0.7)
-      grd.addColorStop(0,'rgba(0,0,0,0)');grd.addColorStop(1,'rgba(43,42,40,0.08)')
-      ctx.fillStyle=grd;ctx.fillRect(0,0,cw,ch)
-      // Back-of-photo stamp lines (date+time on same line per FIX 5)
-      const lines=buildStampLinesForBack(previewPhoto.stamp)
-      if(lines.length){
-        const fontDef=getStampFont(previewPhoto.stamp.stampFont??'classic')
-        const fs=cw*0.028*fontDef.sizeMult,pad=cw*0.04,lineH=fs*1.55
-        ctx.font=`${fontDef.weight} ${Math.round(fs)}px ${fontDef.family}`
-        ctx.fillStyle='#2B2A28'
-        const startY=ch-pad-lineH*(lines.length-1)
-        lines.forEach((l,i)=>ctx.fillText(l,pad,startY+i*lineH))
-      }
-      // Clear the stamp canvas (back uses only the bottom layer)
-      const sctx=stampCanvas.getContext('2d')!
-      sctx.clearRect(0,0,stampCanvas.width,stampCanvas.height)
-      return
-    }
-
     // FRONT side
     //
     // Nothing used to cancel an in-flight load when this effect re-ran, so two
@@ -698,27 +596,10 @@ export default function StudioPage(){
       // Top canvas: stamp only, no filter
       const sctx=stampCanvas.getContext('2d')!
       sctx.clearRect(0,0,cw,ch)
-      const{stamp}=previewPhoto
-      if(stamp.stampLocation==='back'||stamp.style==='none') return
-      const lines=buildStampLinesForFront(stamp)
-      if(!lines.length) return
-      const fontDef=getStampFont(stamp.stampFont??'classic')
-      const fs=cw*0.022*fontDef.sizeMult,pad=cw*0.025,lineH=fs*1.45
-      sctx.font=`${stamp.style==='burn'?'bold':fontDef.weight} ${Math.round(fs)}px ${fontDef.family}`
-      const boxW=Math.max(...lines.map(l=>sctx.measureText(l).width))+pad*2,boxH=lines.length*lineH+pad*0.8
-      let bx=pad,by=ch-boxH-pad
-      if(stamp.position==='br') bx=cw-boxW-pad
-      if(stamp.position==='tl') by=pad
-      if(stamp.position==='tr'){bx=cw-boxW-pad;by=pad}
-      if(stamp.style==='burn'){
-        sctx.fillStyle='#E8841A';sctx.shadowColor='rgba(232,132,26,0.6)';sctx.shadowBlur=3
-        lines.forEach((l,i)=>sctx.fillText(l,bx,by+pad*0.4+(i+1)*lineH-lineH*0.2))
-        sctx.shadowBlur=0
-      } else {
-        sctx.fillStyle='rgba(247,243,238,0.65)';sctx.fillRect(bx,by,boxW,boxH)
-        sctx.fillStyle='rgba(43,42,40,0.85)'
-        lines.forEach((l,i)=>sctx.fillText(l,bx+pad*0.8,by+pad*0.4+(i+1)*lineH-lineH*0.2))
-      }
+      // The exact routine that burns the stamp into the print file. Sharing it
+      // is the point: the reason prints came back bare was two renderers, one
+      // of which quietly did nothing.
+      drawStamp(sctx,cw,ch,previewPhoto.stamp)
     }
     img.src=previewPhoto.url
     if(img.complete && img.naturalWidth > 0) img.onload?.(new Event('load') as any)
@@ -726,8 +607,8 @@ export default function StudioPage(){
   },[previewPhoto?.id,previewPhoto?.url,previewPhoto?.filter,
      previewPhoto?.stamp.showDate,previewPhoto?.stamp.showTime,previewPhoto?.stamp.showLocation,
      previewPhoto?.stamp.locationText,previewPhoto?.stamp.customText,previewPhoto?.stamp.style,
-     previewPhoto?.stamp.position,previewPhoto?.stamp.dateFormat,previewPhoto?.stamp.stampLocation,
-     previewPhoto?.stamp.stampFont,previewPhoto?.stamp.capturedAt,previewPhoto?.stamp.capturedAtOverride,previewIndex,previewSide,fontsReady])
+     previewPhoto?.stamp.position,previewPhoto?.stamp.dateFormat,
+     previewPhoto?.stamp.stampFont,previewPhoto?.stamp.capturedAt,previewPhoto?.stamp.capturedAtOverride,previewIndex,fontsReady])
 
   const updatePhoto=(id:string,u:Partial<Photo>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,...u}:p));setAddedState(false)}
   const updateStamp=(id:string,u:Partial<StampConfig>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,stamp:{...p.stamp,...u}}:p));setAddedState(false)}
@@ -868,7 +749,7 @@ export default function StudioPage(){
   // Now the tile itself says so, and this puts the photo back in one tap.
   const reAddRef = useRef<HTMLInputElement|null>(null)
   const reAddTargetRef = useRef<string|null>(null)
-  const needsReAdd = (photo:Photo)=> !photo.file && !photo.uploadedPath
+  const needsReAdd = (photo:Photo)=> !photo.file && !Object.keys(photo.uploadedPaths ?? {}).length
   const photosNeedingReAdd = photos.filter(needsReAdd)
 
   const startReAdd=(photoId:string)=>{
@@ -895,7 +776,7 @@ export default function StudioPage(){
     // well choose a different one, and showing the old thumbnail against new
     // print data would be a lie about what gets printed.
     setPhotos(prev=>prev.map(p=>p.id===id
-      ? {...p, file:f, fileName:f.name, url:prep.url, width:prep.w, height:prep.h, uploadedPath:undefined}
+      ? {...p, file:f, fileName:f.name, url:prep.url, width:prep.w, height:prep.h, uploadedPaths:undefined}
       : p))
     setOrderItems(prev=>prev.map(i=>i.photoId===id?{...i, url:prep.url, fileName:f.name}:i))
   }
@@ -926,23 +807,33 @@ export default function StudioPage(){
       setUploadState({active:false,current:0,total:0,error:'Please choose a print finish (lustre or gloss) before continuing'})
       return
     }
-    // Dedupe photos across order items — a single photo might be in multiple cart entries
-    const uniquePhotoIds = Array.from(new Set(orderItems.map(i=>i.photoId)))
-    setUploadState({active:true,current:0,total:uniquePhotoIds.length,error:''})
+    // What gets uploaded is now the RENDERED photo — filter applied, stamp
+    // burned in — so two cart entries of the same photo with different stamps
+    // are two different files. The dedupe key has to say so: keying on photoId
+    // alone would print one of them twice and silently drop the other.
+    const renderKey = (i: OrderItem) =>
+      `${i.photoId}|${i.filter}|${JSON.stringify(i.stamp)}`
+    const uniqueRenders = Array.from(
+      new Map(orderItems.map(i=>[renderKey(i), i])).entries()
+    )
+    setUploadState({active:true,current:0,total:uniqueRenders.length,error:''})
 
-    // Compress + upload each unique photo, mapping photoId → supabase path
+    // Render + upload each distinct version, mapping render key → supabase path
     const pathMap: Record<string,string> = {}
     try {
-      const {compressForPrint, uploadCompressed} = await import('@/lib/compress')
-      for(let i=0; i<uniquePhotoIds.length; i++){
-        const photoId = uniquePhotoIds[i]
-        const photo = photos.find(p=>p.id===photoId)
-        if(!photo) throw new Error(`Photo ${photoId} not found in state`)
+      const {uploadCompressed} = await import('@/lib/compress')
+      for(let i=0; i<uniqueRenders.length; i++){
+        const [key, item] = uniqueRenders[i]
+        const photo = photos.find(p=>p.id===item.photoId)
+        if(!photo) throw new Error(`Photo ${item.photoId} not found in state`)
         // Already uploaded on an earlier run at this cart — reuse it. This is
         // what lets someone return from checkout, change their mind about a
         // size, and check out again without sending every photo a second time.
-        if(photo.uploadedPath){
-          pathMap[photoId] = photo.uploadedPath
+        // Cached per render key, so changing a stamp and coming back re-renders
+        // rather than silently reusing the old picture.
+        const cached = photo.uploadedPaths?.[key]
+        if(cached){
+          pathMap[key] = cached
           setUploadState(s=>({...s,current:i+1}))
           continue
         }
@@ -956,11 +847,18 @@ export default function StudioPage(){
           // grid of identically named screenshots.
           throw new Error(`One of your photos needs adding again before it can be printed. Scroll up — it is marked "Needs re-adding" with a button to fix it.`)
         }
-        const compressed = await compressForPrint(photo.file)
-        const path = await uploadCompressed(compressed.blob, photo.fileName)
-        pathMap[photoId] = path
+        // THE fix. This used to be compressForPrint(photo.file), which redrew
+        // the untouched original onto a blank canvas: the date stamp and the
+        // filter existed only in the preview and never reached the printer.
+        // Rendering here means the file Prodigi receives is the picture the
+        // customer was looking at.
+        const rendered = await renderForPrint(photo.file, item.filter, item.stamp)
+        const path = await uploadCompressed(rendered.blob, photo.fileName)
+        pathMap[key] = path
         // Remember it, so a return trip to the studio does not re-upload.
-        setPhotos(prev=>prev.map(p=>p.id===photoId?{...p,uploadedPath:path}:p))
+        setPhotos(prev=>prev.map(p=>p.id===photo.id
+          ? {...p, uploadedPaths:{...(p.uploadedPaths ?? {}), [key]:path}}
+          : p))
         setUploadState(s=>({...s,current:i+1}))
       }
     } catch(err:any) {
@@ -975,7 +873,7 @@ export default function StudioPage(){
       stamp:i.stamp,
       filter:i.filter,
       fileName:i.fileName,
-      photoPath: pathMap[i.photoId],
+      photoPath: pathMap[renderKey(i)],
     }))
     // FIX (Cart persistence): localStorage with 7-day TTL so abandoned carts survive
     const {setWithTTL} = await import('@/lib/storage')
@@ -986,7 +884,7 @@ export default function StudioPage(){
   }
 
   // FIX 2: CSS filter only on the photo canvas (bottom layer). Stamp canvas (top) stays unfiltered.
-  const canvasCssFilter = previewSide==='front' && previewPhoto ? getFCss(previewPhoto.filter) : 'none'
+  const canvasCssFilter = previewPhoto ? getFCss(previewPhoto.filter) : 'none'
 
   if(photos.length===0) return(
     <div style={{maxWidth:680,margin:'0 auto',padding:'40px 20px'}}>
@@ -1166,14 +1064,6 @@ export default function StudioPage(){
               <div style={C.head}>
                 <div style={{display:'flex',alignItems:'center',gap:12,flex:1,flexWrap:'wrap'}}>
                   <span style={C.mono}>Preview {selectedPhotos.length>1?`(${previewIndex+1} of ${selectedPhotos.length})`:''}</span>
-                  <div style={{display:'inline-flex',background:'rgba(43,42,40,0.06)',borderRadius:6,padding:2}}>
-                    {(['front','back'] as const).map(side=>(
-                      <button key={side} onClick={()=>setPreviewSide(side)}
-                        style={{padding:'4px 12px',fontSize:11,fontFamily:'Courier New, monospace',border:'none',borderRadius:5,background:previewSide===side?'#F7F3EE':'transparent',color:previewSide===side?'#2B2A28':'#8A6F5A',cursor:'pointer',fontWeight:previewSide===side?600:400,letterSpacing:'0.04em',textTransform:'uppercase'}}>
-                        {side}
-                      </button>
-                    ))}
-                  </div>
                 </div>
                 <div style={{display:'flex',gap:8,alignItems:'center'}}>
                   {selectedPhotos.length>1&&(
@@ -1186,7 +1076,7 @@ export default function StudioPage(){
                 </div>
               </div>
               {/* FIX 2/3: two stacked canvases — photo (filtered) on bottom, stamp on top */}
-              <div style={{background:previewSide==='back'?'#E8DECC':'#1C1A18',display:'flex',alignItems:'center',justifyContent:'center',padding:12,transition:'background 0.2s'}}>
+              <div style={{background:'#1C1A18',display:'flex',alignItems:'center',justifyContent:'center',padding:12,transition:'background 0.2s'}}>
                 <div style={{position:'relative',display:'inline-block',maxWidth:'100%'}}>
                   <canvas ref={photoCanvasRef} style={{maxWidth:'100%',maxHeight:400,display:'block',borderRadius:3,filter:canvasCssFilter,transition:'filter 0.15s'}}/>
                   <canvas ref={stampCanvasRef} style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',pointerEvents:'none'}}/>
@@ -1320,31 +1210,6 @@ export default function StudioPage(){
               <div style={C.card}>
                 <div style={C.head}><span style={C.mono}>Stamp</span></div>
                 <div style={{padding:'12px 14px'}}>
-                  {/* FIX (Compact): Front/Back as segmented buttons */}
-                  <div style={{display:'flex',gap:4,padding:3,background:'#F7F3EE',borderRadius:7,border:'0.5px solid rgba(43,42,40,0.1)',marginBottom:10}}>
-                    {(['front','back'] as const).map(loc=>{
-                      const isActive=activePhoto.stamp.stampLocation===loc
-                      return (
-                        <button key={loc} onClick={()=>updateStamp(activePhoto.id,{stampLocation:loc})}
-                          style={{flex:1,padding:'7px 0',background:isActive?'#F2D5C0':'transparent',border:isActive?'1px solid #D97A43':'1px solid transparent',borderRadius:5,fontSize:11,fontWeight:500,fontFamily:'Courier New, monospace',color:isActive?'#8A3A10':'#8A6F5A',cursor:'pointer',letterSpacing:'0.06em',textTransform:'uppercase'}}>
-                          {loc==='front'?'Front':'Back'}
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  {activePhoto.stamp.stampLocation==='back'?(
-                    <>
-                      <div style={{padding:'8px 10px',background:'rgba(217,122,67,0.08)',borderRadius:6,fontSize:11,color:'#5C4A3A',lineHeight:1.4,fontStyle:'italic',marginBottom:10}}>
-                        Date and details print in black on the back. Use the BACK toggle in preview to see exactly what prints.
-                      </div>
-                      <span style={{...C.mono,display:'block',marginBottom:4}}>Font</span>
-                      <select style={{...C.select,fontSize:13,padding:'7px 10px'}} value={activePhoto.stamp.stampFont??'classic'} onChange={e=>updateStamp(activePhoto.id,{stampFont:e.target.value as StampFont})}>
-                        {STAMP_FONTS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
-                      </select>
-                    </>
-                  ):(
-                    <>
                       {/* FIX (Compact): Style + Position 2-col grid */}
                       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
                         <div>
@@ -1373,8 +1238,6 @@ export default function StudioPage(){
                           </select>
                         </>
                       )}
-                    </>
-                  )}
                 </div>
               </div>
             )}
@@ -1497,37 +1360,6 @@ export default function StudioPage(){
               <div style={C.card}>
                 <div style={C.head}><span style={C.mono}>Stamp</span></div>
                 <div style={{padding:'14px 16px'}}>
-                  <p style={{fontSize:13,color:'#2B2A28',fontWeight:500,marginBottom:10}}>Where should the stamp go?</p>
-                  {(['front','back'] as const).map(loc=>{
-                    const isActive=bulkSharedStampLocation===loc
-                    return (
-                      <label key={loc} onClick={()=>applyBulkStamp({stampLocation:loc})}
-                        style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:8,background:isActive?'#F2D5C0':'#F7F3EE',border:`1px solid ${isActive?'#D97A43':'rgba(43,42,40,0.15)'}`,marginBottom:6,cursor:'pointer',fontSize:13,color:isActive?'#8A3A10':'#2B2A28'}}>
-                        <span style={{width:14,height:14,borderRadius:'50%',border:`2px solid ${isActive?'#D97A43':'rgba(43,42,40,0.3)'}`,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                          {isActive&&<span style={{width:6,height:6,borderRadius:'50%',background:'#D97A43'}}/>}
-                        </span>
-                        <span style={{flex:1}}>{loc==='front'?'Front of photo':'Back of photo'}</span>
-                      </label>
-                    )
-                  })}
-                  {bulkSharedStampLocation==='mixed'&&(
-                    <p style={{fontSize:11,color:'#D97A43',fontStyle:'italic',marginTop:4}}>Mixed stamp locations — pick one to apply to all</p>
-                  )}
-
-                  {bulkSharedStampLocation==='back'?(
-                    /* FIX 6: updated helper text */
-                    <>
-                      <div style={{marginTop:14,padding:'10px 12px',background:'rgba(217,122,67,0.08)',borderRadius:6,fontSize:12,color:'#5C4A3A',lineHeight:1.5,fontStyle:'italic'}}>
-                        Date and details will be printed in black on the back of each photo. Use the BACK toggle in the photo preview to see exactly what will print.
-                      </div>
-                      <span style={{...C.mono,display:'block',marginBottom:4,marginTop:12}}>Font</span>
-                      <select style={C.select} value={bulkSharedFont==='mixed'?'':(bulkSharedFont as string ?? 'classic')} onChange={e=>applyBulkStamp({stampFont:e.target.value as StampFont})}>
-                        {bulkSharedFont==='mixed'&&<option value="" disabled>Mixed — pick one</option>}
-                        {STAMP_FONTS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
-                      </select>
-                    </>
-                  ):(
-                    <>
                       <span style={{...C.mono,display:'block',marginBottom:4,marginTop:12}}>Style</span>
                       <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
                         {(['burn','overlay','none'] as StampStyle[]).map(s=>{
@@ -1558,8 +1390,6 @@ export default function StudioPage(){
                           </select>
                         </>
                       )}
-                    </>
-                  )}
                 </div>
               </div>
             )}
@@ -1608,9 +1438,6 @@ export default function StudioPage(){
                   <div style={{position:'relative'}}>
                     <img src={item.url} alt="" style={{width:'100%',height:140,objectFit:'cover',display:'block',filter:getFCss(item.filter)}}/>
                     <div style={{position:'absolute',top:6,left:6,background:'rgba(43,42,40,0.72)',color:'#F7F3EE',borderRadius:4,padding:'2px 8px',fontFamily:'Courier New, monospace',fontSize:10}}>#{idx+1}</div>
-                    {item.stamp.stampLocation==='back'&&(
-                      <div style={{position:'absolute',bottom:5,right:5,background:'rgba(247,243,238,0.85)',color:'#5C4A3A',borderRadius:3,padding:'2px 6px',fontFamily:'Courier New, monospace',fontSize:8,letterSpacing:'0.05em'}}>BACK</div>
-                    )}
                   </div>
                   <div style={{padding:'10px 12px'}}>
                     <select value={item.size} onChange={e=>setOrderItems(prev=>prev.map(i=>i.id===item.id?{...i,size:e.target.value}:i))}
