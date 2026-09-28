@@ -62,6 +62,11 @@ const STRUCTURED_DATA = {
       logo: `${SITE_URL}/og.jpg`,
       email: 'support@archiveyours.com',
       description: 'Photo printing with the date and location stamped on every print.',
+      // sameAs is how Google ties the site and the social account together into
+      // one entity rather than two unrelated things that happen to share a
+      // name. It is also a corroborating signal for a domain this young, which
+      // has no inbound links of its own yet.
+      sameAs: ['https://www.instagram.com/archiveyoursprints/'],
     },
     {
       '@type': 'WebSite',
