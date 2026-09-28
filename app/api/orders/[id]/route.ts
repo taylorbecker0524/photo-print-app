@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
+// Belt and braces alongside the no-store fetch in lib/supabase: this is the
+// page a customer stares at straight after paying, so a stale read here is the
+// most expensive one in the app.
+export const fetchCache = 'force-no-store'
+export const revalidate = 0
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
