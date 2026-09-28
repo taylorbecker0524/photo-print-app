@@ -2,16 +2,77 @@ import type { Metadata } from 'next'
 import './globals.css'
 import Analytics from '@/lib/analytics'
 
+const SITE_URL = 'https://www.archiveyours.com'
+
+// The business is called Archive Yours. The metadata said "archive".
+//
+// That single word is what Google was given as the site's name, and it is a
+// word owned several times over by the Internet Archive, archive.org and
+// archive.com — so a search for the actual brand matched nothing here. The
+// wordmark in the nav can stay lowercase "archive"; what a crawler reads has
+// to be the name a customer would type.
 export const metadata: Metadata = {
-  title: 'archive — Date & Location Stamp Photo Prints',
-  description: 'Upload your photos and get them printed with the exact date and location stamped on them — just like old disposable cameras. Ships to your door.',
-  keywords: 'timestamp photos, location stamp photos, date stamp prints, disposable camera prints, photo printing, stamped photo prints',
+  // Without metadataBase, Next resolves Open Graph and canonical URLs against
+  // the deployment host — which on Vercel is a different preview domain on
+  // every build, and duplicate hosts serving identical pages is the classic
+  // way to split your own ranking.
+  metadataBase: new URL(SITE_URL),
+  // Deliberately a plain string rather than a title template: every sub-page
+  // already spells out "— Archive Yours" itself, and a template would have
+  // stamped the brand on twice.
+  title: 'Archive Yours — Date & Location Stamp Photo Prints',
+  description: 'Archive Yours prints your photos with the exact date and location stamped on them — just like old disposable cameras. Upload from your phone and we ship them to your door.',
+  applicationName: 'Archive Yours',
+  keywords: 'Archive Yours, archiveyours, timestamp photos, location stamp photos, date stamp prints, disposable camera prints, photo printing, stamped photo prints',
+  alternates: { canonical: '/' },
   openGraph: {
-    title: 'archive — Date & Location Stamp Photo Prints',
-    description: 'Upload your photos and get them printed with the exact date and location stamped on them. Ships to your door.',
-    url: 'https://www.archiveyours.com',
-    siteName: 'archive',
+    type: 'website',
+    title: 'Archive Yours — Date & Location Stamp Photo Prints',
+    description: 'Photos printed with the exact date and location stamped on them, just like old disposable cameras.',
+    url: SITE_URL,
+    siteName: 'Archive Yours',
+    images: [{ url: '/og.jpg', width: 1200, height: 630, alt: 'Archive Yours photo prints' }],
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Archive Yours — Date & Location Stamp Photo Prints',
+    description: 'Photos printed with the exact date and location stamped on them.',
+    images: ['/og.jpg'],
+  },
+}
+
+/**
+ * Structured data naming the business.
+ *
+ * Meta tags describe a page; this describes the organisation behind it. It is
+ * how you tell Google that the site whose logo reads "archive" belongs to a
+ * company called Archive Yours, and it is what a knowledge panel is built
+ * from. `alternateName` covers people who search the wordmark instead.
+ */
+const STRUCTURED_DATA = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': `${SITE_URL}/#organization`,
+      name: 'Archive Yours',
+      legalName: 'Archive Yours, LLC',
+      alternateName: ['archive', 'archiveyours', 'Archive Yours LLC'],
+      url: SITE_URL,
+      logo: `${SITE_URL}/og.jpg`,
+      email: 'support@archiveyours.com',
+      description: 'Photo printing with the date and location stamped on every print.',
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE_URL}/#website`,
+      name: 'Archive Yours',
+      alternateName: 'archive',
+      url: SITE_URL,
+      publisher: { '@id': `${SITE_URL}/#organization` },
+      inLanguage: 'en-US',
+    },
+  ],
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -20,6 +81,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="google-site-verification" content="LO-G4F3qX2tPGzBMUrq2GwMC01jyAjeKFiXjbSRdLog" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }}
+        />
       </head>
       <body style={{ background: '#F7F3EE', minHeight: '100vh', margin: 0, padding: 0, overflowX: 'hidden' }}>
         <Analytics />
