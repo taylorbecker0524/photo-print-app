@@ -37,7 +37,14 @@ const PHOTOS = [
 // product is about. The notecards take no overlap at all, so they never cover a
 // print's stamped corner either.
 const OVERLAP = -56
-const ROW_NATURAL_W = 1860
+// The three prints in the middle get more air than the rest, so the row reads
+// as a cluster with breathing room rather than one solid deck of cards.
+const OVERLAP_AIR = -16
+// The row is scaled to slightly MORE than the window, so the first and last
+// prints run off both edges instead of stopping politely inside them. The
+// scrapbook then reads as wider than the screen, which is the point.
+const BLEED = 90
+const ROW_NATURAL_W = 1940
 
 export default function HomePage() {
   const router = useRouter()
@@ -90,7 +97,7 @@ export default function HomePage() {
   // edge. Scaling the whole row as one unit keeps every print on screen at any
   // width and preserves the composition exactly, instead of reflowing it into
   // something that no longer reads as a row of photos on a table.
-  const photoScale = viewportW ? Math.min(1.8, Math.max(0.28, (viewportW - 24) / ROW_NATURAL_W)) : 1
+  const photoScale = viewportW ? Math.min(1.8, Math.max(0.28, (viewportW + BLEED) / ROW_NATURAL_W)) : 1
 
   // offsetHeight is the pre-transform layout height, so this stays correct no
   // matter what scale is applied.
@@ -232,7 +239,7 @@ export default function HomePage() {
           </div>
 
           {/* Photo 3 — beach */}
-          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-2deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: OVERLAP, zIndex: 6 }}>
+          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-2deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: OVERLAP_AIR, zIndex: 6 }}>
             <TapeTop />
             <img src="/photos/photo3.jpg" alt="first beach" style={{ width: 251, height: 329, objectFit: 'cover', display: 'block' }} loading="eager" />
             <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 11, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>7 - 04 - 23</div>
@@ -240,7 +247,7 @@ export default function HomePage() {
           </div>
 
           {/* Photo 4 — dinner */}
-          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(3deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: OVERLAP, zIndex: 5 }}>
+          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(3deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: OVERLAP_AIR, zIndex: 5 }}>
             <TapeTop />
             <img src="/photos/photo4.jpg" alt="memory" style={{ width: 240, height: 313, objectFit: 'cover', display: 'block' }} loading="eager" />
             <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 11, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>11 - 30 - 24</div>
