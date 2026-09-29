@@ -22,11 +22,22 @@ const PHOTOS = [
   { src: '/photos/photo6.jpg', stamp: '7 - 12 - 24', cap: null, loc: 'Chesapeake Bay, MD', rot: 2, stampPos: 'br' },
 ]
 
-// Natural size of the desktop scrapbook row, measured in the browser: the eight
-// items come to 1538px wide including the extra width their rotation adds, and
-// 312px tall. ROW_NATURAL_W leaves room beyond that so `space-between` still
-// puts real air between the prints rather than butting them together.
-const ROW_NATURAL_W = 1660
+// Natural size of the desktop scrapbook row. The whole row is laid out at this
+// width and then scaled to the viewport, so ROW_NATURAL_W is the lever that
+// decides how large the prints end up: the row always spans the window, so a
+// NARROWER natural width means a bigger scale factor and bigger photos.
+//
+// That is what OVERLAP buys. Shingling the prints takes real width out of the
+// row without removing anything from it, which pays for prints about 40% larger
+// than the old side-by-side layout could fit.
+//
+// The stacking runs left to right — each card sits ON TOP of the one after it —
+// because the date stamps live in the bottom-right corner of every print. Stack
+// it the other way and each print's neighbour covers the one thing the whole
+// product is about. The notecards take no overlap at all, so they never cover a
+// print's stamped corner either.
+const OVERLAP = -56
+const ROW_NATURAL_W = 1860
 
 export default function HomePage() {
   const router = useRouter()
@@ -192,17 +203,17 @@ export default function HomePage() {
           collapsed below 1700px and ran to tens of thousands of pixels above. */}
       {!isMobile && (
         <div style={{ background: '#EDE6DC', width: '100%', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', height: rowNaturalH ? Math.round(rowNaturalH * photoScale) : undefined }}>
-        <div ref={photoRowRef} style={{ width: ROW_NATURAL_W, flexShrink: 0, padding: '34px 0 30px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0, transform: `scale(${photoScale})`, transformOrigin: 'top center' }}>
+        <div ref={photoRowRef} style={{ width: ROW_NATURAL_W, flexShrink: 0, padding: '34px 0 30px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, transform: `scale(${photoScale})`, transformOrigin: 'top center' }}>
 
           {/* Photo 1 */}
-          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-3.5deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: '1%' }}>
+          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-3.5deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, zIndex: 9 }}>
             <TapeTop />
-            <img src="/photos/photo1.jpg" alt="memory" style={{ width: 160, height: 210, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>8 - 14 - 22</div>
+            <img src="/photos/photo1.jpg" alt="memory" style={{ width: 248, height: 326, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 11, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>8 - 14 - 22</div>
           </div>
 
           {/* Story notecard — FIX 7: larger size, no italic on body, darker color */}
-          <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '15px 17px', boxShadow: '0 2px 8px rgba(43,42,40,0.08)', position: 'relative', flexShrink: 0, width: 220, transform: 'rotate(1.5deg)', alignSelf: 'center' }}>
+          <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '15px 17px', boxShadow: '0 2px 8px rgba(43,42,40,0.08)', position: 'relative', flexShrink: 0, width: 240, zIndex: 8, transform: 'rotate(1.5deg)', alignSelf: 'center' }}>
             <div style={{ position: 'absolute', width: 34, height: 10, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
             {STORY.map((p, i) => {
               const isLast = i === STORY.length - 1
@@ -214,29 +225,29 @@ export default function HomePage() {
           </div>
 
           {/* Photo 2 — Scotland */}
-          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(2.5deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0 }}>
+          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(2.5deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: OVERLAP, zIndex: 7 }}>
             <TapeTop />
-            <img src="/photos/photo2.jpg" alt="Scotland" style={{ width: 158, height: 206, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', top: 10, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>9 - 18 - 23<br />SCOTLAND</div>
+            <img src="/photos/photo2.jpg" alt="Scotland" style={{ width: 245, height: 319, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', top: 10, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 11, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>9 - 18 - 23<br />SCOTLAND</div>
           </div>
 
           {/* Photo 3 — beach */}
-          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-2deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0 }}>
+          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-2deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: OVERLAP, zIndex: 6 }}>
             <TapeTop />
-            <img src="/photos/photo3.jpg" alt="first beach" style={{ width: 162, height: 212, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>7 - 04 - 23</div>
-            <div style={{ position: 'absolute', bottom: 7, left: 0, right: 0, textAlign: 'center', fontSize: 8.5, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>first beach</div>
+            <img src="/photos/photo3.jpg" alt="first beach" style={{ width: 251, height: 329, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 11, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>7 - 04 - 23</div>
+            <div style={{ position: 'absolute', bottom: 7, left: 0, right: 0, textAlign: 'center', fontSize: 11, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>first beach</div>
           </div>
 
           {/* Photo 4 — dinner */}
-          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(3deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0 }}>
+          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(3deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: OVERLAP, zIndex: 5 }}>
             <TapeTop />
-            <img src="/photos/photo4.jpg" alt="memory" style={{ width: 155, height: 202, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>11 - 30 - 24</div>
+            <img src="/photos/photo4.jpg" alt="memory" style={{ width: 240, height: 313, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 11, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>11 - 30 - 24</div>
           </div>
 
           {/* Feature notecard — FIX 7: larger size, less italic, darker */}
-          <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '15px 17px', boxShadow: '0 2px 8px rgba(43,42,40,0.08)', position: 'relative', flexShrink: 0, width: 215, transform: 'rotate(-1.5deg)', alignSelf: 'center' }}>
+          <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '15px 17px', boxShadow: '0 2px 8px rgba(43,42,40,0.08)', position: 'relative', flexShrink: 0, width: 235, zIndex: 4, transform: 'rotate(-1.5deg)', alignSelf: 'center' }}>
             <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, left: -3, transform: 'rotate(-15deg)' }} />
             <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, right: -3, transform: 'rotate(15deg)' }} />
             <p style={{ fontSize: 11, color: '#3D3128', fontFamily: 'Georgia, serif', lineHeight: 1.55, marginBottom: 8 }}>
@@ -249,18 +260,18 @@ export default function HomePage() {
           </div>
 
           {/* Photo 6 — dog at bay */}
-          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(2deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0 }}>
+          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(2deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: OVERLAP, zIndex: 3 }}>
             <TapeTop />
-            <img src="/photos/photo6.jpg" alt="Chesapeake Bay" style={{ width: 155, height: 204, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>7 - 12 - 24<br />Chesapeake Bay, MD</div>
+            <img src="/photos/photo6.jpg" alt="Chesapeake Bay" style={{ width: 240, height: 316, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 11, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>7 - 12 - 24<br />Chesapeake Bay, MD</div>
           </div>
 
           {/* Photo 5 — B&W christmas */}
-          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-1.5deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginRight: '1%' }}>
+          <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-1.5deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: OVERLAP, zIndex: 2 }}>
             <TapeTop />
-            <img src="/photos/photo5.jpg" alt="first christmas" style={{ width: 158, height: 206, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', bottom: 28, left: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 8.5, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>12 - 25 - 23<br />Kennett Square, PA</div>
-            <div style={{ position: 'absolute', bottom: 7, left: 0, right: 0, textAlign: 'center', fontSize: 8.5, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>first christmas</div>
+            <img src="/photos/photo5.jpg" alt="first christmas" style={{ width: 245, height: 319, objectFit: 'cover', display: 'block' }} loading="eager" />
+            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 11, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>12 - 25 - 23<br />Kennett Square, PA</div>
+            <div style={{ position: 'absolute', bottom: 7, left: 0, right: 0, textAlign: 'center', fontSize: 11, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>first christmas</div>
           </div>
 
         </div>
