@@ -22,6 +22,100 @@ export type StampStyle = 'burn' | 'overlay' | 'none'
 export type StampPos = 'bl' | 'br' | 'tl' | 'tr'
 export type StampFont = 'classic' | 'pixel' | 'typewriter'
 
+/**
+ * THE CROP.
+ *
+ * A 4x6 is 2:3. A phone shoots 3:4. Those do not match, so something has to
+ * go. Until now nothing in our code made that decision — we shipped the full
+ * photo and Prodigi's `fillPrintArea` shaved 11% off both sides, dead centre,
+ * with nobody looking. That is what cut a person out of a print.
+ *
+ * Worse, the stamp sits 2.5% in from the edge of the file we upload, and the
+ * crop eats 11%, so the lab was also shaving the date off the bottom corner.
+ *
+ * So the crop happens HERE, before the stamp is drawn. The canvas is created
+ * at the exact print ratio, the photo is drawn into it through the crop rect,
+ * and only then does drawStamp run — which means the stamp is positioned
+ * against the paper's edge, not the original file's, and cannot be cut off.
+ * `fillPrintArea` is then a no-op: there is no overflow left to remove.
+ *
+ * `cx`/`cy` are the centre of the crop window in normalised source
+ * coordinates, `zoom` is a multiplier on the largest rect of the print's shape
+ * that fits inside the photo. The defaults (0.5, 0.5, 1) reproduce exactly the
+ * centre crop the lab was doing, so photos ordered before the crop editor
+ * existed render identically.
+ */
+export type CropMode = 'fill' | 'fit'
+export type Crop = { mode: CropMode; zoom: number; cx: number; cy: number }
+export const DEFAULT_CROP: Crop = { mode: 'fill', zoom: 1, cx: 0.5, cy: 0.5 }
+export const isDefaultCrop = (c?: Crop | null): boolean =>
+  !c || (c.mode === 'fill' && c.zoom === 1 && c.cx === 0.5 && c.cy === 0.5)
+
+/** Long edge over short edge for every size we sell. */
+export const PRINT_RATIOS: Record<string, number> = {
+  '4x6': 6 / 4, '5x7': 7 / 5, '8x10': 10 / 8,
+  'square-4': 1, 'square-5': 1, 'square-8': 1,
+}
+
+/**
+ * Width/height of the paper, oriented to follow the photo. A portrait photo on
+ * a 4x6 gets a portrait 4x6; we never rotate someone's picture to fit.
+ */
+export function printAspect(size: string, srcW: number, srcH: number): number {
+  const r = PRINT_RATIOS[size] ?? 1
+  return srcW >= srcH ? r : 1 / r
+}
+
+const clamp = (v: number, lo: number, hi: number) =>
+  hi < lo ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v))
+
+/** The rectangle of the source photo that ends up on the paper. */
+export function cropRect(
+  srcW: number, srcH: number, targetAspect: number, crop?: Crop | null
+): { sx: number; sy: number; sw: number; sh: number } {
+  const c = crop ?? DEFAULT_CROP
+  let rw: number, rh: number
+  if (srcW / srcH > targetAspect) { rh = srcH; rw = srcH * targetAspect }
+  else { rw = srcW; rh = srcW / targetAspect }
+  const z = Math.max(1, Number.isFinite(c.zoom) ? c.zoom : 1)
+  rw /= z; rh /= z
+  const hw = rw / 2, hh = rh / 2
+  const cx = clamp(Number.isFinite(c.cx) ? c.cx : 0.5, hw / srcW, 1 - hw / srcW)
+  const cy = clamp(Number.isFinite(c.cy) ? c.cy : 0.5, hh / srcH, 1 - hh / srcH)
+  return { sx: cx * srcW - hw, sy: cy * srcH - hh, sw: rw, sh: rh }
+}
+
+/**
+ * Where the stamp is allowed to live.
+ *
+ * In fill mode that is the whole sheet. In fit mode the photo is floating in a
+ * white border, and a burn stamp glowing on the blank margin looks like a
+ * caption someone typed on, not light leaking onto film — so it stays inside
+ * the picture. Callers translate to this box and draw at its dimensions, which
+ * also keeps the type scaled to the photo rather than to the paper.
+ */
+export function stampArea(
+  mode: CropMode, cw: number, ch: number, srcW: number, srcH: number
+): { x: number; y: number; w: number; h: number } {
+  if (mode !== 'fit') return { x: 0, y: 0, w: cw, h: ch }
+  const s = Math.min(cw / srcW, ch / srcH)
+  const w = srcW * s, h = srcH * s
+  return { x: (cw - w) / 2, y: (ch - h) / 2, w, h }
+}
+
+/**
+ * How many real pixels survive the crop. The resolution warning has to read
+ * this, not the photo's own dimensions — zoom in far enough and a sharp photo
+ * stops being one.
+ */
+export function croppedPixels(
+  srcW: number, srcH: number, size: string, crop?: Crop | null
+): { w: number; h: number } {
+  if (crop && crop.mode === 'fit') return { w: srcW, h: srcH }
+  const r = cropRect(srcW, srcH, printAspect(size, srcW, srcH), crop)
+  return { w: Math.round(r.sw), h: Math.round(r.sh) }
+}
+
 export type StampConfig = {
   showDate: boolean; showTime: boolean; showLocation: boolean
   locationText: string; customText: string; style: StampStyle
@@ -163,26 +257,24 @@ const JPEG_QUALITY = 0.85
 const DECODE_TIMEOUT_MS = 30000
 
 /**
- * Produce the JPEG that will actually be printed: the photo at print
- * resolution, with the chosen filter applied to the pixels and the stamp burned
- * in on top.
+ * Produce the JPEG that will actually be printed: the photo cropped to the
+ * exact shape of the paper, at print resolution, with the chosen filter applied
+ * to the pixels and the stamp burned in on top of the cropped frame.
  *
- * When there is nothing to burn in, this hands back to compressForPrint, which
- * keeps the existing fast path (an already-small JPEG is passed through
- * untouched rather than re-encoded and degraded a second time).
+ * The order of those steps is the whole point. Crop first, stamp second. Do it
+ * the other way round — or leave the crop to the lab, as we did — and the
+ * stamp is placed against an edge that no longer exists by the time the photo
+ * reaches paper.
  */
 export async function renderForPrint(
   file: File,
   filter: Filter,
-  stamp: StampConfig
+  stamp: StampConfig,
+  size: string = '4x6',
+  crop?: Crop | null
 ): Promise<{ blob: Blob; width: number; height: number }> {
   const filterCss = getFCss(filter)
   const needsStamp = stampIsVisible(stamp)
-  if (filterCss === 'none' && !needsStamp) {
-    const { compressForPrint } = await import('./compress')
-    const out = await compressForPrint(file)
-    return { blob: out.blob, width: out.width, height: out.height }
-  }
 
   let bitmap: ImageBitmap
   try {
@@ -198,10 +290,19 @@ export async function renderForPrint(
     }
   }
 
-  const longest = Math.max(bitmap.width, bitmap.height)
-  const scale = longest > MAX_PRINT_PIXELS ? MAX_PRINT_PIXELS / longest : 1
-  const cw = Math.round(bitmap.width * scale)
-  const ch = Math.round(bitmap.height * scale)
+  const srcW = bitmap.width, srcH = bitmap.height
+  const mode: CropMode = crop?.mode ?? 'fill'
+  const aspect = printAspect(size, srcW, srcH)
+
+  // The canvas is the PAPER, not the photo. Everything below — the crop, the
+  // letterbox, the stamp — is positioned against these dimensions, so what
+  // this function returns is already the exact shape Prodigi is going to
+  // print and there is nothing left for the lab to trim.
+  const rect = cropRect(srcW, srcH, aspect, crop)
+  const srcLong = mode === 'fit' ? Math.max(srcW, srcH) : Math.max(rect.sw, rect.sh)
+  const outLong = Math.min(MAX_PRINT_PIXELS, Math.max(1, Math.round(srcLong)))
+  const cw = aspect >= 1 ? outLong : Math.max(1, Math.round(outLong * aspect))
+  const ch = aspect >= 1 ? Math.max(1, Math.round(outLong / aspect)) : outLong
 
   const canvas = document.createElement('canvas')
   canvas.width = cw
@@ -218,13 +319,30 @@ export async function renderForPrint(
   // without ctx.filter support the photo prints unfiltered, which is a
   // disappointment rather than a failed order.
   if (filterCss !== 'none' && 'filter' in ctx) ctx.filter = filterCss
-  ctx.drawImage(bitmap, 0, 0, cw, ch)
+
+  if (mode === 'fit') {
+    // Nothing is allowed to be cut, so the paper shows through on two sides.
+    // Paint it first: an unpainted canvas encodes to black in a JPEG.
+    ctx.filter = 'none'
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fillRect(0, 0, cw, ch)
+    if (filterCss !== 'none' && 'filter' in ctx) ctx.filter = filterCss
+    const s = Math.min(cw / srcW, ch / srcH)
+    const dw = srcW * s, dh = srcH * s
+    ctx.drawImage(bitmap, 0, 0, srcW, srcH, (cw - dw) / 2, (ch - dh) / 2, dw, dh)
+  } else {
+    ctx.drawImage(bitmap, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, cw, ch)
+  }
   ctx.filter = 'none'
   bitmap.close()
 
   if (needsStamp) {
-    await ensureStampFont(stamp.stampFont ?? 'classic', cw * 0.022)
-    drawStamp(ctx, cw, ch, stamp)
+    const area = stampArea(mode, cw, ch, srcW, srcH)
+    await ensureStampFont(stamp.stampFont ?? 'classic', area.w * 0.022)
+    ctx.save()
+    ctx.translate(area.x, area.y)
+    drawStamp(ctx, area.w, area.h, stamp)
+    ctx.restore()
   }
 
   const blob = await withTimeout(
