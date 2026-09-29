@@ -9,15 +9,19 @@ import { setWithTTL, getWithTTL, clearStored } from '@/lib/storage'
 import {
   FILTERS, getFCss, STAMP_FONTS, getStampFont,
   fmtDate, fmtTime, effectiveCapturedAt, drawStamp, renderForPrint,
+  DEFAULT_CROP, printAspect, cropRect, isDefaultCrop, stampArea,
 } from '@/lib/printRender'
-import type { Filter, StampStyle, StampPos, StampFont, StampConfig } from '@/lib/printRender'
+import type { Filter, StampStyle, StampPos, StampFont, StampConfig, Crop } from '@/lib/printRender'
 
 // `file` is absent on a photo restored after leaving the page: the browser will
 // not hand a File back to us. Such a photo can still be shown and re-ordered as
 // long as it was uploaded before, which `uploadedPaths` records. `fileName` is
 // kept separately because it has to outlive the File.
-type Photo = {width?:number;height?:number; id: string; file?: File; fileName: string; uploadedPaths?: Record<string,string>; url: string; sessionId: string; filter: Filter; stamp: StampConfig; size: string }
-type OrderItem = { id: string; photoId: string; url: string; fileName: string; filter: Filter; stamp: StampConfig; size: string; quantity: number }
+// `crop` is optional because photos saved before the crop editor existed do not
+// have one, and an absent crop means "the centre crop the lab used to do" —
+// so an old saved cart renders exactly as it would have before.
+type Photo = {width?:number;height?:number; id: string; file?: File; fileName: string; uploadedPaths?: Record<string,string>; url: string; sessionId: string; filter: Filter; stamp: StampConfig; size: string; crop?: Crop }
+type OrderItem = { id: string; photoId: string; url: string; fileName: string; filter: Filter; stamp: StampConfig; size: string; crop?: Crop; quantity: number }
 type Session = { id: string; name: string; date: Date; photoIds: string[]; isRenaming: boolean }
 
 /** What we write to localStorage so the studio can rebuild itself. */
@@ -156,10 +160,16 @@ function effectivePixels(w:number,h:number,shortIn:number,longIn:number):{short:
   return{short:Math.round(photoLong/printAspect),long:photoLong}
 }
 
-function isTooSmallForPrint(size:string,w?:number,h?:number):boolean{
+/**
+ * Zooming in throws pixels away, so the sharpness warning has to see the crop.
+ * A 12MP photo cropped to a quarter of its frame is a 3MP photo, and saying
+ * nothing until it arrives in the post is exactly the failure we are fixing.
+ */
+function isTooSmallForPrint(size:string,w?:number,h?:number,crop?:Crop):boolean{
   const need=MIN_PRINT_PIXELS[size]
   if(!need||!w||!h)return false
-  const eff=effectivePixels(w,h,need.short/150,need.long/150)
+  const z=crop&&crop.mode==='fill'?Math.max(1,crop.zoom||1):1
+  const eff=effectivePixels(w/z,h/z,need.short/150,need.long/150)
   return eff.short<need.short||eff.long<need.long
 }
 /**
@@ -169,19 +179,22 @@ function isTooSmallForPrint(size:string,w?:number,h?:number):boolean{
  * tell you there is a problem and leave you to work out the fix; saying
  * "it will look sharp at 4x6" turns a dead end into one click.
  */
-function resolutionNote(size:string,w?:number,h?:number):string|null{
-  if(!w||!h||!isTooSmallForPrint(size,w,h))return null
+function resolutionNote(size:string,w?:number,h?:number,crop?:Crop):string|null{
+  if(!w||!h||!isTooSmallForPrint(size,w,h,crop))return null
   const need=MIN_PRINT_PIXELS[size]
   const label=need?need.label:size
+  const z=crop&&crop.mode==='fill'?Math.max(1,crop.zoom||1):1
   // Largest first, so we suggest the biggest size that still prints sharp.
-  const fits=["8x10","square-8","5x7","square-5","4x6","square-4"].find(k=>!isTooSmallForPrint(k,w,h))
-  const base="Low resolution - this photo is "+w+" x "+h+" and may print blurry at "+label+"."
+  const fits=["8x10","square-8","5x7","square-5","4x6","square-4"].find(k=>!isTooSmallForPrint(k,w,h,crop))
+  const base=z>1.02
+    ? "Zoomed in this far, only "+Math.round(w/z)+" x "+Math.round(h/z)+" pixels reach the paper - it may print blurry at "+label+"."
+    : "Low resolution - this photo is "+w+" x "+h+" and may print blurry at "+label+"."
   return fits?base+" It will look sharp at "+MIN_PRINT_PIXELS[fits].label+".":base
 }
 
 function itemResolutionNote(item:OrderItem,all:Photo[]):string|null{
   const ph=all.find(p=>p.id===item.photoId)
-  return ph?resolutionNote(item.size,ph.width,ph.height):null
+  return ph?resolutionNote(item.size,ph.width,ph.height,item.crop):null
 }
 
 
@@ -288,10 +301,260 @@ function StampBullets({stamp,filter}:{stamp:StampConfig;filter:Filter}){
   )
 }
 
+
+/**
+ * ADJUST CROP.
+ *
+ * The bug this exists to kill: we uploaded the whole photo and let Prodigi's
+ * `fillPrintArea` decide what to remove. A 3:4 phone photo on a 2:3 print loses
+ * 11% of its width, centred, and on a square it loses 25% — which is how a
+ * child ended up outside the edge of a print of his own family.
+ *
+ * So the decision moves in front of the customer. The bright rectangle is the
+ * paper. Everything dimmed is gone. Drag the photo, pinch or slide to zoom, or
+ * switch to "fit" and keep the whole frame with a border. Whatever is inside
+ * that rectangle when they hit save is exactly the file we send, because the
+ * export runs the same cropRect() this modal is drawing with.
+ */
+const MAX_ZOOM = 4
+const SCRIM = 'rgba(24,22,20,0.74)'
+
+function CropModal({photo,onClose,onSave}:{
+  photo:Photo; onClose:()=>void; onSave:(crop:Crop,size:string)=>void
+}){
+  const [size,setSize]=useState(photo.size)
+  const [crop,setCrop]=useState<Crop>(photo.crop?{...photo.crop}:{...DEFAULT_CROP})
+  const [nat,setNat]=useState<{w:number;h:number}|null>(
+    photo.width&&photo.height?{w:photo.width,h:photo.height}:null)
+  const [stage,setStage]=useState({w:520,h:400})
+  const stageRef=useRef<HTMLDivElement>(null)
+  const stampRef=useRef<HTMLCanvasElement>(null)
+  const dragRef=useRef<null|{x:number;y:number;cx:number;cy:number;scale:number}>(null)
+  const pinchRef=useRef<null|{d:number;zoom:number}>(null)
+  const ptrs=useRef<Map<number,{x:number;y:number}>>(new Map())
+
+  useEffect(()=>{
+    const fit=()=>setStage({
+      w:Math.min(560,window.innerWidth-32),
+      h:Math.min(430,Math.max(240,window.innerHeight-330)),
+    })
+    fit();window.addEventListener('resize',fit)
+    return()=>window.removeEventListener('resize',fit)
+  },[])
+
+  // A photo restored from a previous visit may not have carried its measured
+  // dimensions, and every number below depends on them.
+  useEffect(()=>{
+    if(nat)return
+    const i=new Image()
+    i.onload=()=>setNat({w:i.naturalWidth,h:i.naturalHeight})
+    i.src=photo.url
+  },[photo.url,nat])
+
+  useEffect(()=>{
+    const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose()}
+    window.addEventListener('keydown',onKey)
+    return()=>window.removeEventListener('keydown',onKey)
+  },[onClose])
+
+  const aspect = nat ? printAspect(size,nat.w,nat.h) : 1
+  const fw0 = Math.min(stage.w*0.68, stage.h*0.88*aspect)
+  const frameW = Math.max(40,fw0), frameH = Math.max(40,fw0/aspect)
+  const frameLeft=(stage.w-frameW)/2, frameTop=(stage.h-frameH)/2
+
+  // The frame never moves; the photo moves behind it. That makes the dimmed
+  // area four fixed rectangles instead of a clip path that has to be recomputed
+  // on every pointer move.
+  const rect = nat ? cropRect(nat.w,nat.h,aspect,crop) : null
+  const scale = rect ? frameW/rect.sw : 1
+  const dispW = nat ? nat.w*scale : 0
+  const dispH = nat ? nat.h*scale : 0
+  const imgLeft = rect ? frameLeft - rect.sx*scale : 0
+  const imgTop  = rect ? frameTop  - rect.sy*scale : 0
+  const fitS = nat ? Math.min(frameW/nat.w,frameH/nat.h) : 1
+
+  const setPan=useCallback((cx:number,cy:number,sw:number,sh:number)=>{
+    if(!nat)return
+    const hx=(sw/2)/nat.w, hy=(sh/2)/nat.h
+    setCrop(c=>({...c,
+      cx:Math.min(1-hx,Math.max(hx,cx)),
+      cy:Math.min(1-hy,Math.max(hy,cy))}))
+  },[nat])
+
+  const setZoom=useCallback((z:number)=>{
+    setCrop(c=>({...c,zoom:Math.min(MAX_ZOOM,Math.max(1,z))}))
+  },[])
+
+  // Wheel has to be a non-passive native listener: React's synthetic onWheel
+  // cannot preventDefault, so the page would scroll away underneath the crop.
+  useEffect(()=>{
+    const el=stageRef.current
+    if(!el)return
+    const onWheel=(e:WheelEvent)=>{
+      if(crop.mode==='fit')return
+      e.preventDefault()
+      setZoom(crop.zoom*(1-e.deltaY*0.0016))
+    }
+    el.addEventListener('wheel',onWheel,{passive:false})
+    return()=>el.removeEventListener('wheel',onWheel)
+  },[crop.mode,crop.zoom,setZoom])
+
+  // Show the stamp where it will actually land: inside the paper, drawn by the
+  // same routine the printer file uses. Seeing it sit safely in the corner is
+  // the reassurance that the clipped stamps are over.
+  useEffect(()=>{
+    const c=stampRef.current
+    if(!c)return
+    c.width=Math.round(frameW);c.height=Math.round(frameH)
+    const ctx=c.getContext('2d')
+    if(!ctx||!nat)return
+    ctx.clearRect(0,0,c.width,c.height)
+    const area=stampArea(crop.mode,c.width,c.height,nat.w,nat.h)
+    ctx.save()
+    ctx.translate(area.x,area.y)
+    drawStamp(ctx,area.w,area.h,photo.stamp)
+    ctx.restore()
+  },[frameW,frameH,photo.stamp,crop.mode,nat])
+
+  const down=(e:React.PointerEvent)=>{
+    if(crop.mode==='fit'||!rect)return
+    try{(e.currentTarget as Element).setPointerCapture(e.pointerId)}catch{}
+    ptrs.current.set(e.pointerId,{x:e.clientX,y:e.clientY})
+    if(ptrs.current.size===1){
+      dragRef.current={x:e.clientX,y:e.clientY,cx:crop.cx,cy:crop.cy,scale}
+    }else if(ptrs.current.size===2){
+      const v=Array.from(ptrs.current.values())
+      pinchRef.current={d:Math.hypot(v[0].x-v[1].x,v[0].y-v[1].y)||1,zoom:crop.zoom}
+      dragRef.current=null
+    }
+  }
+  const move=(e:React.PointerEvent)=>{
+    if(!ptrs.current.has(e.pointerId)||!nat||!rect)return
+    ptrs.current.set(e.pointerId,{x:e.clientX,y:e.clientY})
+    if(ptrs.current.size>=2&&pinchRef.current){
+      const v=Array.from(ptrs.current.values())
+      const d=Math.hypot(v[0].x-v[1].x,v[0].y-v[1].y)||1
+      setZoom(pinchRef.current.zoom*(d/pinchRef.current.d))
+      return
+    }
+    const d=dragRef.current
+    if(!d)return
+    setPan(
+      d.cx-(e.clientX-d.x)/(d.scale*nat.w),
+      d.cy-(e.clientY-d.y)/(d.scale*nat.h),
+      rect.sw,rect.sh)
+  }
+  const up=(e:React.PointerEvent)=>{
+    ptrs.current.delete(e.pointerId)
+    if(ptrs.current.size<2)pinchRef.current=null
+    if(ptrs.current.size===0)dragRef.current=null
+  }
+
+  const warn = nat ? resolutionNote(size,nat.w,nat.h,crop) : null
+  const lost = (()=>{
+    if(!nat||crop.mode==='fit')return 0
+    const r=cropRect(nat.w,nat.h,aspect,{...crop,zoom:1,cx:0.5,cy:0.5})
+    return Math.round((1-(r.sw*r.sh)/(nat.w*nat.h))*100)
+  })()
+
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(24,22,20,0.66)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'#F7F3EE',borderRadius:14,overflow:'hidden',boxShadow:'0 12px 46px rgba(24,22,20,0.4)',maxWidth:'100%',maxHeight:'100%',overflowY:'auto'}}>
+
+        <div style={{padding:'13px 16px',borderBottom:'1px solid rgba(43,42,40,0.09)',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+          <div>
+            <div style={{fontFamily:'Georgia, serif',fontSize:17,color:'#2B2A28'}}>Adjust crop</div>
+            <div style={{fontSize:11,color:'#8A6F5A',fontStyle:'italic'}}>
+              {crop.mode==='fit'?'Nothing is cut - the paper shows at the edges':'The bright area is your print. Drag to move.'}
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',color:'#8A6F5A',fontSize:20,lineHeight:1,padding:4}}>&times;</button>
+        </div>
+
+        <div ref={stageRef} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+          style={{position:'relative',width:stage.w,height:stage.h,background:'#1C1A18',overflow:'hidden',touchAction:'none',userSelect:'none',cursor:crop.mode==='fit'?'default':'grab'}}>
+          {nat&&crop.mode==='fit'&&(
+            <div style={{position:'absolute',left:frameLeft,top:frameTop,width:frameW,height:frameH,background:'#FFFFFF'}}/>
+          )}
+          {nat&&(
+            <img src={photo.url} alt="" draggable={false} style={crop.mode==='fit'
+              ?{position:'absolute',left:frameLeft+(frameW-nat.w*fitS)/2,top:frameTop+(frameH-nat.h*fitS)/2,width:nat.w*fitS,height:nat.h*fitS,maxWidth:'none',display:'block',filter:getFCss(photo.filter)}
+              :{position:'absolute',left:imgLeft,top:imgTop,width:dispW,height:dispH,maxWidth:'none',display:'block',filter:getFCss(photo.filter)}}/>
+          )}
+
+          <div style={{position:'absolute',left:0,right:0,top:0,height:Math.max(0,frameTop),background:SCRIM,pointerEvents:'none'}}/>
+          <div style={{position:'absolute',left:0,right:0,top:frameTop+frameH,bottom:0,background:SCRIM,pointerEvents:'none'}}/>
+          <div style={{position:'absolute',left:0,width:Math.max(0,frameLeft),top:frameTop,height:frameH,background:SCRIM,pointerEvents:'none'}}/>
+          <div style={{position:'absolute',left:frameLeft+frameW,right:0,top:frameTop,height:frameH,background:SCRIM,pointerEvents:'none'}}/>
+
+          <div style={{position:'absolute',left:frameLeft,top:frameTop,width:frameW,height:frameH,boxShadow:'0 0 0 2px #F7F3EE',pointerEvents:'none'}}>
+            <div style={{position:'absolute',left:'33.33%',top:0,bottom:0,width:1,background:'rgba(247,243,238,0.28)'}}/>
+            <div style={{position:'absolute',left:'66.66%',top:0,bottom:0,width:1,background:'rgba(247,243,238,0.28)'}}/>
+            <div style={{position:'absolute',top:'33.33%',left:0,right:0,height:1,background:'rgba(247,243,238,0.28)'}}/>
+            <div style={{position:'absolute',top:'66.66%',left:0,right:0,height:1,background:'rgba(247,243,238,0.28)'}}/>
+            <canvas ref={stampRef} style={{position:'absolute',left:0,top:0,width:'100%',height:'100%'}}/>
+          </div>
+
+          {!nat&&(
+            <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',color:'#C4B5A5',fontSize:12,fontFamily:'Courier New, monospace'}}>Loading photo...</div>
+          )}
+        </div>
+
+        <div style={{padding:'14px 16px 16px',width:stage.w,maxWidth:'100%'}}>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12,opacity:crop.mode==='fit'?0.4:1}}>
+            <span style={{...C.mono,width:44,flex:'none'}}>Zoom</span>
+            <input type="range" min={1} max={MAX_ZOOM} step={0.01} value={crop.zoom}
+              disabled={crop.mode==='fit'}
+              onChange={e=>setZoom(parseFloat(e.target.value))}
+              style={{flex:1,accentColor:'#D97A43',cursor:crop.mode==='fit'?'default':'pointer'}}/>
+            <button onClick={()=>setCrop({...DEFAULT_CROP,mode:crop.mode})} disabled={crop.mode==='fit'}
+              style={{...C.ghost,padding:'6px 10px',fontSize:10,cursor:crop.mode==='fit'?'default':'pointer'}}>Reset</button>
+          </div>
+
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12,flexWrap:'wrap'}}>
+            <span style={{...C.mono,width:44,flex:'none'}}>Size</span>
+            <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+              {SIZES.map(sz=>(
+                <button key={sz.key} onClick={()=>setSize(sz.key)}
+                  style={{padding:'6px 10px',fontFamily:'Courier New, monospace',fontSize:10.5,borderRadius:6,cursor:'pointer',
+                    border:`1px solid ${size===sz.key?'#2B2A28':'rgba(43,42,40,0.18)'}`,
+                    background:size===sz.key?'#2B2A28':'#F7F3EE',
+                    color:size===sz.key?'#F7F3EE':'#8A6F5A'}}>{sz.label}</button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{display:'flex',alignItems:'center',gap:10,paddingTop:11,borderTop:'1px solid rgba(43,42,40,0.09)'}}>
+            <Toggle checked={crop.mode==='fit'} onChange={()=>setCrop(c=>({...c,mode:c.mode==='fit'?'fill':'fit'}))}/>
+            <span style={{fontSize:12.5,color:'#8A6F5A',lineHeight:1.4}}>
+              Fit the whole photo instead <i>(adds a thin white border)</i>
+            </span>
+          </div>
+
+          {crop.mode==='fill'&&lost>0&&(
+            <p style={{fontSize:11,color:'#8A6F5A',marginTop:9,fontStyle:'italic'}}>
+              A {SIZES.find(x=>x.key===size)?.label} is a different shape to this photo, so about {lost}% of it cannot fit. You choose which {lost}%.
+            </p>
+          )}
+          {warn&&(
+            <p style={{fontSize:11,color:'#8A3A10',background:'#F6E4D6',borderRadius:7,padding:'8px 10px',marginTop:9,lineHeight:1.45}}>{warn}</p>
+          )}
+
+          <div style={{display:'flex',gap:9,marginTop:14}}>
+            <button onClick={onClose} style={{...C.ghost,flex:1,padding:'11px',textAlign:'center'}}>Cancel</button>
+            <button onClick={()=>onSave(crop,size)} style={{...C.accent,flex:1.6,padding:'11px',width:'auto'}}>Save crop</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function StudioPage(){
   const router=useRouter()
   const fileInputRef=useRef<HTMLInputElement>(null)
   const addMoreRef=useRef<HTMLInputElement>(null)
+  const [cropPhotoId,setCropPhotoId]=useState<string|null>(null)
   const photoCanvasRef=useRef<HTMLCanvasElement>(null)   // FIX 2/3: photo (filtered) on bottom layer
   const stampCanvasRef=useRef<HTMLCanvasElement>(null)   // FIX 2/3: stamp on top, no filter
   const [photos,setPhotos]=useState<Photo[]>([])
@@ -523,7 +786,7 @@ export default function StudioPage(){
           }
         })()
         return{width:prep.w,height:prep.h,id,file:f,fileName:f.name,url:prep.url,sessionId,filter:'original' as Filter,
-          stamp:{...DEFAULT_STAMP,capturedAt:exif.date,hasExifDate:!!exif.date,hasExifLocation,locationText,showDate:!!exif.date,showLocation:hasExifLocation},size:'4x6'}
+          stamp:{...DEFAULT_STAMP,capturedAt:exif.date,hasExifDate:!!exif.date,hasExifLocation,locationText,showDate:!!exif.date,showLocation:hasExifLocation},size:'4x6',crop:{...DEFAULT_CROP}}
       }))
       newPhotos.push(...processed)
       // Paint each batch as it lands. Holding all of them until the last photo
@@ -583,23 +846,42 @@ export default function StudioPage(){
     const img=new Image()
     img.onload=()=>{
       if(cancelled) return
-      let cw=Math.min(maxW,img.naturalWidth),ch=(cw/img.naturalWidth)*img.naturalHeight
-      if(ch>maxH){ch=maxH;cw=(ch/img.naturalHeight)*img.naturalWidth}
+      // The preview is now the PAPER, not the photo. It used to show the whole
+      // uploaded image while Prodigi quietly cropped 11% off the sides to make
+      // it fit — so the one picture the customer never saw was the one that
+      // actually got printed. Same shape, same crop, same renderer as the
+      // export: if it is not on this canvas it is not on the print.
+      const srcW=img.naturalWidth,srcH=img.naturalHeight
+      const crop=previewPhoto.crop??DEFAULT_CROP
+      const aspect=printAspect(previewPhoto.size,srcW,srcH)
+      let cw=Math.min(maxW,srcW),ch=cw/aspect
+      if(ch>maxH){ch=maxH;cw=ch*aspect}
       photoCanvas.width=Math.round(cw);photoCanvas.height=Math.round(ch)
       stampCanvas.width=Math.round(cw);stampCanvas.height=Math.round(ch)
 
       // Bottom canvas: photo only (CSS filter applied to the canvas element below)
       const pctx=photoCanvas.getContext('2d')!
       pctx.clearRect(0,0,cw,ch)
-      pctx.drawImage(img,0,0,cw,ch)
+      if(crop.mode==='fit'){
+        pctx.fillStyle='#FFFFFF';pctx.fillRect(0,0,cw,ch)
+        const fs=Math.min(cw/srcW,ch/srcH)
+        pctx.drawImage(img,0,0,srcW,srcH,(cw-srcW*fs)/2,(ch-srcH*fs)/2,srcW*fs,srcH*fs)
+      }else{
+        const r=cropRect(srcW,srcH,aspect,crop)
+        pctx.drawImage(img,r.sx,r.sy,r.sw,r.sh,0,0,cw,ch)
+      }
 
       // Top canvas: stamp only, no filter
       const sctx=stampCanvas.getContext('2d')!
       sctx.clearRect(0,0,cw,ch)
+      const area=stampArea(crop.mode,cw,ch,srcW,srcH)
+      sctx.save()
+      sctx.translate(area.x,area.y)
       // The exact routine that burns the stamp into the print file. Sharing it
       // is the point: the reason prints came back bare was two renderers, one
       // of which quietly did nothing.
-      drawStamp(sctx,cw,ch,previewPhoto.stamp)
+      drawStamp(sctx,area.w,area.h,previewPhoto.stamp)
+      sctx.restore()
     }
     img.src=previewPhoto.url
     if(img.complete && img.naturalWidth > 0) img.onload?.(new Event('load') as any)
@@ -608,10 +890,24 @@ export default function StudioPage(){
      previewPhoto?.stamp.showDate,previewPhoto?.stamp.showTime,previewPhoto?.stamp.showLocation,
      previewPhoto?.stamp.locationText,previewPhoto?.stamp.customText,previewPhoto?.stamp.style,
      previewPhoto?.stamp.position,previewPhoto?.stamp.dateFormat,
-     previewPhoto?.stamp.stampFont,previewPhoto?.stamp.capturedAt,previewPhoto?.stamp.capturedAtOverride,previewIndex,fontsReady])
+     previewPhoto?.stamp.stampFont,previewPhoto?.stamp.capturedAt,previewPhoto?.stamp.capturedAtOverride,
+     previewPhoto?.size,previewPhoto?.crop?.mode,previewPhoto?.crop?.zoom,previewPhoto?.crop?.cx,previewPhoto?.crop?.cy,
+     previewIndex,fontsReady])
 
   const updatePhoto=(id:string,u:Partial<Photo>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,...u}:p));setAddedState(false)}
   const updateStamp=(id:string,u:Partial<StampConfig>)=>{setPhotos(prev=>prev.map(p=>p.id===id?{...p,stamp:{...p.stamp,...u}}:p));setAddedState(false)}
+  /**
+   * A saved crop reaches the cart immediately, unlike a filter or a stamp,
+   * which wait to be re-added. That asymmetry is deliberate: someone who opens
+   * this modal is fixing a photo that was about to print with a person's head
+   * cut off, and leaving the old crop sitting in the basket would ship exactly
+   * the print they just came here to prevent.
+   */
+  const saveCrop=(id:string,crop:Crop,size:string)=>{
+    setPhotos(prev=>prev.map(p=>p.id===id?{...p,crop,size}:p))
+    setOrderItems(prev=>prev.map(i=>i.photoId===id?{...i,crop}:i))
+    setCropPhotoId(null)
+  }
   const detectLocation=useCallback(()=>{navigator.geolocation?.getCurrentPosition(async pos=>{const loc=await reverseGeocode(pos.coords.latitude,pos.coords.longitude);if(loc&&activePhotoId)updateStamp(activePhotoId,{locationText:loc,showLocation:true})})},[activePhotoId])
 
   // FIX 12: Bulk apply helpers now read from current selectedIds at call time
@@ -783,9 +1079,9 @@ export default function StudioPage(){
 
   const addToOrder=(photo:Photo)=>{
     setOrderItems(prev=>{
-      const existing=prev.find(i=>i.photoId===photo.id&&i.size===photo.size&&i.filter===photo.filter&&JSON.stringify(i.stamp)===JSON.stringify(photo.stamp))
+      const existing=prev.find(i=>i.photoId===photo.id&&i.size===photo.size&&i.filter===photo.filter&&JSON.stringify(i.stamp)===JSON.stringify(photo.stamp)&&JSON.stringify(i.crop??DEFAULT_CROP)===JSON.stringify(photo.crop??DEFAULT_CROP))
       if(existing) return prev.map(i=>i.id===existing.id?{...i,quantity:i.quantity+1}:i)
-      return[...prev,{id:Math.random().toString(36).slice(2),photoId:photo.id,url:photo.url,fileName:photo.fileName,filter:photo.filter,stamp:{...photo.stamp},size:photo.size,quantity:1}]
+      return[...prev,{id:Math.random().toString(36).slice(2),photoId:photo.id,url:photo.url,fileName:photo.fileName,filter:photo.filter,stamp:{...photo.stamp},size:photo.size,crop:{...(photo.crop??DEFAULT_CROP)},quantity:1}]
     })
     setAddedState(true)
   }
@@ -811,8 +1107,11 @@ export default function StudioPage(){
     // burned in — so two cart entries of the same photo with different stamps
     // are two different files. The dedupe key has to say so: keying on photoId
     // alone would print one of them twice and silently drop the other.
+    // Size and crop belong in the key now that the render produces a file cut to
+    // the exact shape of the paper: the same photo at 4x6 and at 4x4 is two
+    // different pictures, and leaving them out would print one of them twice.
     const renderKey = (i: OrderItem) =>
-      `${i.photoId}|${i.filter}|${JSON.stringify(i.stamp)}`
+      `${i.photoId}|${i.filter}|${i.size}|${JSON.stringify(i.crop??DEFAULT_CROP)}|${JSON.stringify(i.stamp)}`
     const uniqueRenders = Array.from(
       new Map(orderItems.map(i=>[renderKey(i), i])).entries()
     )
@@ -852,7 +1151,7 @@ export default function StudioPage(){
         // filter existed only in the preview and never reached the printer.
         // Rendering here means the file Prodigi receives is the picture the
         // customer was looking at.
-        const rendered = await renderForPrint(photo.file, item.filter, item.stamp)
+        const rendered = await renderForPrint(photo.file, item.filter, item.stamp, item.size, item.crop)
         const path = await uploadCompressed(rendered.blob, photo.fileName)
         pathMap[key] = path
         // Remember it, so a return trip to the studio does not re-upload.
@@ -1076,12 +1375,26 @@ export default function StudioPage(){
                 </div>
               </div>
               {/* FIX 2/3: two stacked canvases — photo (filtered) on bottom, stamp on top */}
-              <div style={{background:'#1C1A18',display:'flex',alignItems:'center',justifyContent:'center',padding:12,transition:'background 0.2s'}}>
+              <div onClick={()=>previewPhoto&&setCropPhotoId(previewPhoto.id)} style={{background:'#1C1A18',display:'flex',alignItems:'center',justifyContent:'center',padding:12,transition:'background 0.2s',cursor:previewPhoto?'pointer':'default'}}>
                 <div style={{position:'relative',display:'inline-block',maxWidth:'100%'}}>
                   <canvas ref={photoCanvasRef} style={{maxWidth:'100%',maxHeight:400,display:'block',borderRadius:3,filter:canvasCssFilter,transition:'filter 0.15s'}}/>
                   <canvas ref={stampCanvasRef} style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',pointerEvents:'none'}}/>
                 </div>
               </div>
+              {/* This canvas is the paper, not the photo. Say so, and put the
+                  way to change it right underneath. */}
+              {previewPhoto&&(
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'9px 12px',borderTop:'0.5px solid rgba(43,42,40,0.08)',flexWrap:'wrap'}}>
+                  <span style={{fontSize:11,color:'#8A6F5A',fontStyle:'italic',lineHeight:1.4}}>
+                    {(previewPhoto.crop?.mode==='fit')
+                      ? 'Whole photo, with a white border where the shapes differ.'
+                      : 'This is the print. Anything outside it is trimmed off.'}
+                  </span>
+                  <button onClick={()=>setCropPhotoId(previewPhoto.id)} style={{...C.ghost,whiteSpace:'nowrap'}}>
+                    {isDefaultCrop(previewPhoto.crop)?'Adjust crop':'Crop adjusted - edit'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1505,6 +1818,13 @@ export default function StudioPage(){
             </div>
           </div>
         )}
+
+        {cropPhotoId&&(()=>{
+          const cp=photos.find(p=>p.id===cropPhotoId)
+          if(!cp)return null
+          return <CropModal photo={cp} onClose={()=>setCropPhotoId(null)}
+            onSave={(crop,size)=>saveCrop(cp.id,crop,size)}/>
+        })()}
     </div>
   )
 }
