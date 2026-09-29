@@ -13,19 +13,6 @@ const STORY = [
   'that\'s why archive exists."'
 ]
 
-/**
- * The notecard that explains the product, written once and rendered twice.
- *
- * It used to open "Remember the date stamp on old disposable camera prints?"
- * — which quietly sorts the reader by age. Anyone under about thirty never
- * owned a disposable camera; they found the look second-hand and liked it on
- * its own terms. Asking them to remember tells them the product is for
- * somebody else. Describing the thing instead works for both.
- */
-const FEATURE_LEAD = 'That orange date in the corner of every old photograph?'
-const FEATURE_LEAD_EM = 'Not a filter. We print it in.'
-const FEATURE_BODY = 'Upload from your phone, pick your stamp, and they arrive in about a week.'
-
 const PHOTOS = [
   { src: '/photos/photo1.jpg', stamp: '8 - 14 - 22', cap: null, loc: null, rot: -3.5, stampPos: 'br' },
   { src: '/photos/photo2.jpg', stamp: '9 - 18 - 23', cap: null, loc: 'SCOTLAND', rot: 2.5, stampPos: 'tr' },
@@ -174,8 +161,8 @@ export default function HomePage() {
           Every photo tells a story.<br /><em style={{ color: '#8A6F5A' }}>Archive yours.</em>
         </h1>
         <p style={{ fontFamily: 'Georgia, serif', fontSize: isMobile ? 15 : 17, color: '#8A6F5A', lineHeight: 1.5, margin: '0 auto 26px', maxWidth: 440 }}>
-          The date and the place burned into the corner, read straight from the
-          photo. The way cameras did it before phones.
+          The date and location stamped on every print — just like old
+          disposable cameras.
         </p>
         {/* The studio keeps an unfinished order for seven days, but the only way
             back into it was a button saying "Get started" — which reads like
@@ -253,11 +240,11 @@ export default function HomePage() {
             <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, left: -3, transform: 'rotate(-15deg)' }} />
             <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, right: -3, transform: 'rotate(15deg)' }} />
             <p style={{ fontSize: 11, color: '#3D3128', fontFamily: 'Georgia, serif', lineHeight: 1.55, marginBottom: 8 }}>
-              {FEATURE_LEAD} <em style={{ color: '#D97A43', fontStyle: 'italic' }}>{FEATURE_LEAD_EM}</em>
+              Remember the date stamp on old disposable camera prints? <em style={{ color: '#D97A43', fontStyle: 'italic' }}>We brought it back.</em>
             </p>
             <div style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: '#E8841A', fontWeight: 700, marginBottom: 8, letterSpacing: '0.07em' }}>5 - 13 - 25 - TAMPA, FL</div>
             <p style={{ fontSize: 10.5, color: '#5C4A3A', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
-              {FEATURE_BODY}
+              Upload your photos, choose your stamp style, and we print and ship them to your door.
             </p>
           </div>
 
@@ -312,43 +299,16 @@ export default function HomePage() {
               <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, left: -3, transform: 'rotate(-15deg)' }} />
               <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, right: -3, transform: 'rotate(15deg)' }} />
               <p style={{ fontSize: 13.5, color: '#3D3128', fontFamily: 'Georgia, serif', lineHeight: 1.55, marginBottom: 9 }}>
-                {FEATURE_LEAD} <em style={{ color: '#D97A43', fontStyle: 'italic' }}>{FEATURE_LEAD_EM}</em>
+                Remember the date stamp on old disposable camera prints? <em style={{ color: '#D97A43', fontStyle: 'italic' }}>We brought it back.</em>
               </p>
               <div style={{ fontFamily: 'Courier New, monospace', fontSize: 12, color: '#E8841A', fontWeight: 700, marginBottom: 9, letterSpacing: '0.07em' }}>5 - 13 - 25 - TAMPA, FL</div>
               <p style={{ fontSize: 12.5, color: '#5C4A3A', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
-                {FEATURE_BODY}
+                Upload your photos, choose your stamp style, and we print and ship them to your door.
               </p>
             </div>
           </div>
         </div>
       )}
-
-      {/* Why a print at all.
-          The collage proves what the product looks like; nothing on the page
-          argued for printing in the first place. That argument is the one that
-          reaches someone who never owned a disposable camera — it is about what
-          a camera roll cannot do, not about what they are supposed to
-          remember. */}
-      <div style={{ background: '#F7F3EE', padding: isMobile ? '40px 20px' : '64px 24px', borderTop: '1px solid rgba(43,42,40,0.07)', width: '100%' }}>
-        <div style={{ maxWidth: 620, margin: '0 auto', textAlign: 'center' }}>
-          <h2 style={{ fontFamily: 'Georgia, serif', fontWeight: 400, fontSize: isMobile ? 'clamp(24px, 7vw, 30px)' : 'clamp(28px, 3.2vw, 38px)', lineHeight: 1.12, color: '#2B2A28', marginBottom: 18 }}>
-            A photo dump disappears.<br />A print doesn&apos;t.
-          </h2>
-          <p style={{ fontFamily: 'Georgia, serif', fontSize: isMobile ? 15 : 17, lineHeight: 1.62, color: '#5C4A3A', marginBottom: 14 }}>
-            Film came back. Disposables came back. Digicams came back. The part
-            that never came back is the date printed on the picture — so you know
-            when it happened without checking anything.
-          </p>
-          <p style={{ fontFamily: 'Georgia, serif', fontSize: isMobile ? 15 : 17, lineHeight: 1.62, color: '#5C4A3A', marginBottom: 26 }}>
-            A camera roll is where photos go, not where anyone looks. It
-            doesn&apos;t survive a lost phone, a full iCloud, or an account you
-            stop opening. A print survives all three by not needing any of them.
-          </p>
-          <button onClick={() => router.push('/studio')} style={{ padding: '14px 40px', background: 'transparent', color: '#2B2A28', border: '1px solid rgba(43,42,40,0.28)', borderRadius: 6, fontSize: 11.5, letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'Courier New, monospace', cursor: 'pointer' }}>
-            Start your archive
-          </button>
-        </div>
-      </div>
 
       {/* Already have an archive */}
       <div style={{ background: '#EFE8DF', padding: '18px 20px', borderTop: '1px solid rgba(43,42,40,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap', width: '100%' }}>
