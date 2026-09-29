@@ -13,6 +13,20 @@ const STORY = [
   'that\'s why archive exists."'
 ]
 
+/**
+ * The note tucked into the collage.
+ *
+ * The full story used to live here, set at 11px inside a card that the row
+ * scales by about 1.03 — so as the prints grew it became the one thing on the
+ * page nobody could read. It now says just enough to earn a second look, and
+ * the story itself gets its own section below the band at a size meant for
+ * reading.
+ */
+const STORY_NOTE = [
+  '"we started printing her photos with the date and place stamped on each one.',
+  'we can\'t freeze time. but we can preserve it."',
+]
+
 const PHOTOS = [
   { src: '/photos/photo1.jpg', stamp: '8 - 14 - 22', cap: null, loc: null, rot: -3.5, stampPos: 'br' },
   { src: '/photos/photo2.jpg', stamp: '9 - 18 - 23', cap: null, loc: 'SCOTLAND', rot: 2.5, stampPos: 'tr' },
@@ -44,7 +58,7 @@ const OVERLAP_AIR = -16
 // prints run off both edges instead of stopping politely inside them. The
 // scrapbook then reads as wider than the screen, which is the point.
 const BLEED = 90
-const ROW_NATURAL_W = 1940
+const ROW_NATURAL_W = 1960
 
 export default function HomePage() {
   const router = useRouter()
@@ -131,12 +145,6 @@ export default function HomePage() {
     fontStyle: 'italic' as const,
   })
 
-  const HeartSig = () => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8, fontFamily: 'Courier New, monospace', fontSize: 9, color: '#8A6F5A' }}>
-      <svg width="10" height="9" viewBox="0 0 24 22" fill="#D97A43"><path d="M12 21.593c-5.63-5.539-11-10.297-11-14.402 0-3.791 3.068-5.191 5.281-5.191 1.312 0 4.151.501 5.719 4.457 1.59-3.968 4.464-4.447 5.726-4.447 2.54 0 5.274 1.621 5.274 5.181 0 4.069-5.136 8.625-11 14.402z" /></svg>
-      the archive family
-    </div>
-  )
 
   const TapeTop = () => <div style={{ position: 'absolute', width: 42, height: 12, background: 'rgba(255,235,170,0.78)', border: '0.5px solid rgba(200,165,80,0.3)', borderRadius: 1, top: -6, left: '50%', transform: 'translateX(-50%)' }} />
 
@@ -220,15 +228,14 @@ export default function HomePage() {
           </div>
 
           {/* Story notecard — FIX 7: larger size, no italic on body, darker color */}
-          <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '15px 17px', boxShadow: '0 2px 8px rgba(43,42,40,0.08)', position: 'relative', flexShrink: 0, width: 240, zIndex: 8, transform: 'rotate(1.5deg)', alignSelf: 'center' }}>
+          <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '15px 17px', boxShadow: '0 2px 8px rgba(43,42,40,0.08)', position: 'relative', flexShrink: 0, width: 200, zIndex: 8, transform: 'rotate(1.5deg)', alignSelf: 'center' }}>
             <div style={{ position: 'absolute', width: 34, height: 10, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
-            {STORY.map((p, i) => {
-              const isLast = i === STORY.length - 1
+            {STORY_NOTE.map((p, i) => {
+              const isLast = i === STORY_NOTE.length - 1
               return (
-                <p key={i} style={{ ...(isLast ? noteClose(11) : noteBody(11)), marginBottom: isLast ? 0 : 7 }}>{p}</p>
+                <p key={i} style={{ ...(isLast ? noteClose(15) : noteBody(15)), marginBottom: isLast ? 0 : 10 }}>{p}</p>
               )
             })}
-            <HeartSig />
           </div>
 
           {/* Photo 2 — Scotland */}
@@ -254,14 +261,14 @@ export default function HomePage() {
           </div>
 
           {/* Feature notecard — FIX 7: larger size, less italic, darker */}
-          <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '15px 17px', boxShadow: '0 2px 8px rgba(43,42,40,0.08)', position: 'relative', flexShrink: 0, width: 235, zIndex: 4, transform: 'rotate(-1.5deg)', alignSelf: 'center' }}>
+          <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '15px 17px', boxShadow: '0 2px 8px rgba(43,42,40,0.08)', position: 'relative', flexShrink: 0, width: 300, zIndex: 4, transform: 'rotate(-1.5deg)', alignSelf: 'center' }}>
             <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, left: -3, transform: 'rotate(-15deg)' }} />
             <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, right: -3, transform: 'rotate(15deg)' }} />
-            <p style={{ fontSize: 11, color: '#3D3128', fontFamily: 'Georgia, serif', lineHeight: 1.55, marginBottom: 8 }}>
+            <p style={{ fontSize: 15, color: '#3D3128', fontFamily: 'Georgia, serif', lineHeight: 1.55, marginBottom: 10 }}>
               Remember the date stamp on old disposable camera prints? <em style={{ color: '#D97A43', fontStyle: 'italic' }}>We brought it back.</em>
             </p>
-            <div style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: '#E8841A', fontWeight: 700, marginBottom: 8, letterSpacing: '0.07em' }}>5 - 13 - 25 - TAMPA, FL</div>
-            <p style={{ fontSize: 10.5, color: '#5C4A3A', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
+            <div style={{ fontFamily: 'Courier New, monospace', fontSize: 13.5, color: '#E8841A', fontWeight: 700, marginBottom: 10, letterSpacing: '0.07em' }}>5 - 13 - 25 - TAMPA, FL</div>
+            <p style={{ fontSize: 14, color: '#5C4A3A', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
               Upload your photos, choose your stamp style, and we print and ship them to your door.
             </p>
           </div>
@@ -291,13 +298,12 @@ export default function HomePage() {
           <div style={{ padding: '16px 16px 0' }}>
             <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '16px 18px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', position: 'relative' }}>
               <div style={{ position: 'absolute', width: 34, height: 10, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
-              {STORY.map((p, i) => {
-                const isLast = i === STORY.length - 1
+              {STORY_NOTE.map((p, i) => {
+                const isLast = i === STORY_NOTE.length - 1
                 return (
-                  <p key={i} style={{ ...(isLast ? noteClose(13.5) : noteBody(13.5)), marginBottom: isLast ? 0 : 9 }}>{p}</p>
+                  <p key={i} style={{ ...(isLast ? noteClose(14.5) : noteBody(14.5)), marginBottom: isLast ? 0 : 9 }}>{p}</p>
                 )
               })}
-              <HeartSig />
             </div>
           </div>
           <div style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '16px 16px 8px', scrollbarWidth: 'none' }}>
@@ -327,6 +333,28 @@ export default function HomePage() {
           </div>
         </div>
       )}
+
+      {/* The founder story, at reading size.
+          It spent its life as 11px inside a card in the collage. The collage
+          keeps a two-line note so it still reads as a scrapbook; the story
+          itself gets room here. */}
+      <div style={{ background: '#F7F3EE', padding: isMobile ? '38px 22px' : '58px 24px', borderTop: '1px solid rgba(43,42,40,0.07)', width: '100%' }}>
+        <div style={{ maxWidth: 640, margin: '0 auto', textAlign: 'center' }}>
+          {STORY.map((para, i) => (
+            <p key={i} style={{
+              fontFamily: 'Georgia, serif',
+              fontSize: isMobile ? 16 : 19,
+              lineHeight: 1.62,
+              color: '#3D3128',
+              fontStyle: i === STORY.length - 1 ? 'italic' : 'normal',
+              marginBottom: i === STORY.length - 1 ? 18 : 15,
+            }}>{para}</p>
+          ))}
+          <p style={{ fontFamily: 'Courier New, monospace', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#8A6F5A', margin: 0 }}>
+            <svg width="11" height="10" viewBox="0 0 24 22" fill="#D97A43" style={{ verticalAlign: 'middle', marginRight: 6 }}><path d="M12 21.593c-5.63-5.539-11-10.297-11-14.402 0-3.791 3.068-5.191 5.281-5.191 1.312 0 4.151.501 5.719 4.457 1.59-3.968 4.464-4.447 5.726-4.447 2.54 0 5.274 1.621 5.274 5.181 0 4.069-5.136 8.625-11 14.402z" /></svg>the archive family
+          </p>
+        </div>
+      </div>
 
       {/* Already have an archive */}
       <div style={{ background: '#EFE8DF', padding: '18px 20px', borderTop: '1px solid rgba(43,42,40,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap', width: '100%' }}>
