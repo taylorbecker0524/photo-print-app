@@ -71,3 +71,21 @@ body {
   outline: 2px solid #D97A43;
   outline-offset: -2px;
 }
+
+
+/* The phone photo strip drifts sideways on its own, forever.
+
+   A strip that ends flush with the screen edge gives no sign it scrolls, so
+   nobody scrolled it. Motion is the affordance. The scroller is native — the
+   drift is a rAF loop nudging scrollLeft — so a thumb still gets momentum
+   scrolling, and the drift simply stands aside while it is being touched.
+
+   The scrollbar has to go: on desktop it would sit under a row that never
+   stops moving, and there is nothing for the reader to do with it. */
+.ay-strip {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+.ay-strip::-webkit-scrollbar { display: none; }

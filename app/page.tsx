@@ -60,6 +60,23 @@ const OVERLAP_AIR = -16
 const BLEED = 90
 const ROW_NATURAL_W = 1960
 
+/**
+ * How fast the phone's photo strip drifts, in pixels per second.
+ *
+ * The strip ended flush with the screen edge, so nothing on screen said it
+ * could be scrolled, and it wasn't. Motion is the fix: a row that is already
+ * moving when you land on it cannot be mistaken for a dead end.
+ *
+ * Expressed as a speed rather than a duration on purpose. A duration would
+ * silently change the feel the moment a photo is added or a print resized,
+ * because the lap would still have to finish in the same time. At 25px/s one
+ * print passes roughly every seven seconds — slow enough to read the date
+ * stamp as it goes by, which is the one thing the whole product is about.
+ */
+const DRIFT_PX_PER_SEC = 25
+/** How long after a thumb lets go before the drift takes over again. */
+const DRIFT_RESUME_MS = 2000
+
 export default function HomePage() {
   const router = useRouter()
   const [isMobile, setIsMobile] = useState(false)
@@ -68,6 +85,7 @@ export default function HomePage() {
   // beats hard-coding: a guess that came up short cropped the story note, and
   // the number would go stale the moment a photo or card changed size.
   const photoRowRef = useRef<HTMLDivElement | null>(null)
+  const stripRef = useRef<HTMLDivElement | null>(null)
   const [rowNaturalH, setRowNaturalH] = useState(0)
   // null = nothing saved (or not checked yet); a number = prints waiting.
   const [savedPrints, setSavedPrints] = useState<number | null>(null)
@@ -124,6 +142,88 @@ export default function HomePage() {
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
     ro?.observe(el)
     return () => ro?.disconnect()
+  }, [isMobile])
+
+  /**
+   * The drift.
+   *
+   * Deliberately NOT a CSS animation on a transformed track. That looks the
+   * same but takes the strip out of the browser's hands: a transform cannot be
+   * swiped, so we would have had to rebuild momentum scrolling ourselves and
+   * would have got it wrong on iOS. This keeps a plain overflow scroller — real
+   * flick, real momentum, real accessibility — and just nudges scrollLeft each
+   * frame. A thumb on the strip stops the nudging; two seconds after it lifts,
+   * the drift picks up from wherever the reader left it.
+   *
+   * The loop is seamless because PHOTOS is rendered twice. Once the first copy
+   * has fully passed, scrollLeft is reduced by exactly one copy's width, which
+   * lands on a pixel-identical frame — there is nothing to see.
+   */
+  useEffect(() => {
+    const el = stripRef.current
+    if (!isMobile || !el) return
+    // Someone who has asked their phone to stop moving things gets a strip that
+    // sits still and is swiped by hand, exactly as it is today.
+    const reduced = typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduced) return
+
+    let raf = 0
+    let last = 0
+    let pos = 0
+    let held = false
+    let resumeAt = 0
+
+    const frame = (t: number) => {
+      raf = requestAnimationFrame(frame)
+      // One copy of the set. Rendering the set twice with a right margin on
+      // every card (rather than flex `gap`, which is not applied after the last
+      // child) makes this exactly half the scrollable width.
+      const lap = el.scrollWidth / 2
+      const dt = last ? Math.min(100, t - last) : 0
+      last = t
+      if (lap <= 0) return
+
+      if (held || t < resumeAt) {
+        // Hands off while the reader is scrolling, and while iOS is still
+        // playing out the momentum from their flick. Track where they have got
+        // to so the drift resumes from there instead of snapping back.
+        pos = el.scrollLeft
+      } else {
+        pos += (DRIFT_PX_PER_SEC * dt) / 1000
+        if (pos >= lap) pos -= lap
+        el.scrollLeft = pos
+      }
+
+      // A hard flick can carry the reader past the seam on its own.
+      if (el.scrollLeft >= lap) { el.scrollLeft -= lap; pos = el.scrollLeft }
+      else if (el.scrollLeft < 0) { el.scrollLeft += lap; pos = el.scrollLeft }
+    }
+
+    const hold = () => { held = true }
+    const release = () => { held = false; resumeAt = performance.now() + DRIFT_RESUME_MS }
+
+    el.addEventListener('pointerdown', hold)
+    el.addEventListener('pointerup', release)
+    el.addEventListener('pointercancel', release)
+    el.addEventListener('touchstart', hold, { passive: true })
+    el.addEventListener('touchend', release, { passive: true })
+    el.addEventListener('touchcancel', release, { passive: true })
+    // A mouse wheel or trackpad never fires pointerdown, so without this the
+    // drift would fight anyone scrolling the strip on a laptop.
+    el.addEventListener('wheel', release, { passive: true })
+    raf = requestAnimationFrame(frame)
+
+    return () => {
+      cancelAnimationFrame(raf)
+      el.removeEventListener('pointerdown', hold)
+      el.removeEventListener('pointerup', release)
+      el.removeEventListener('pointercancel', release)
+      el.removeEventListener('touchstart', hold)
+      el.removeEventListener('touchend', release)
+      el.removeEventListener('touchcancel', release)
+      el.removeEventListener('wheel', release)
+    }
   }, [isMobile])
 
   // FIX 7: notecard typography helper
@@ -293,43 +393,37 @@ export default function HomePage() {
       )}
 
       {/* MOBILE scrapbook */}
+      {/* The phone band.
+          It used to be a notecard, a strip nobody knew could scroll, and a
+          second notecard — two blocks of text squeezing a row that looked like
+          it ended at the screen edge. Both cards are gone: the hero above says
+          the disposable-camera line already, and the family story has its own
+          section below. What is left is the product, moving. */}
       {isMobile && (
-        <div style={{ background: '#EDE6DC', width: '100%', paddingBottom: 16 }}>
-          <div style={{ padding: '16px 16px 0' }}>
-            <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '16px 18px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', position: 'relative' }}>
-              <div style={{ position: 'absolute', width: 34, height: 10, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
-              {STORY_NOTE.map((p, i) => {
-                const isLast = i === STORY_NOTE.length - 1
-                return (
-                  <p key={i} style={{ ...(isLast ? noteClose(14.5) : noteBody(14.5)), marginBottom: isLast ? 0 : 9 }}>{p}</p>
-                )
-              })}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '16px 16px 8px', scrollbarWidth: 'none' }}>
-            {PHOTOS.map((p, i) => (
-              <div key={i} style={{ background: 'white', padding: '5px 5px 20px', transform: `rotate(${p.rot}deg)`, boxShadow: '0 2px 8px rgba(43,42,40,0.1)', position: 'relative', flexShrink: 0, width: 145 }}>
-                <div style={{ position: 'absolute', width: 34, height: 10, background: 'rgba(255,235,170,0.75)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
-                <img src={p.src} alt={p.cap ?? 'memory'} style={{ width: 135, height: 175, objectFit: 'cover', display: 'block' }} loading="eager" />
-                <div style={{ position: 'absolute', ...(p.stampPos === 'tr' ? { top: 8, right: 6 } : p.stampPos === 'bl' ? { bottom: 23, left: 5 } : { bottom: 22, right: 6 }), fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 7.5, lineHeight: 1.4, textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>
+        <div style={{ background: '#EDE6DC', width: '100%', padding: '20px 0 22px', overflow: 'hidden' }}>
+          <div
+            ref={stripRef}
+            className="ay-strip"
+            role="group"
+            aria-label="Prints with the date and place stamped on them"
+            style={{ display: 'flex', overflowX: 'auto', paddingTop: 6, paddingBottom: 6 }}
+          >
+            {[...PHOTOS, ...PHOTOS].map((p, i) => (
+              <div
+                key={i}
+                /* The second copy exists only so the loop has nothing to catch
+                   on. A screen reader should hear the six prints once. */
+                aria-hidden={i >= PHOTOS.length || undefined}
+                style={{ background: 'white', padding: '6px 6px 25px', marginRight: 12, transform: `rotate(${p.rot}deg)`, boxShadow: '0 2px 8px rgba(43,42,40,0.1)', position: 'relative', flexShrink: 0 }}
+              >
+                <div style={{ position: 'absolute', width: 38, height: 11, background: 'rgba(255,235,170,0.75)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
+                <img src={p.src} alt={p.cap ?? 'memory'} style={{ width: 170, height: 220, objectFit: 'cover', display: 'block' }} loading="eager" />
+                <div style={{ position: 'absolute', ...(p.stampPos === 'tr' ? { top: 10, right: 8 } : p.stampPos === 'bl' ? { bottom: 29, left: 7 } : { bottom: 28, right: 8 }), fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 9.5, lineHeight: 1.4, textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>
                   {p.stamp}{p.loc && <><br />{p.loc}</>}
                 </div>
-                {p.cap && <div style={{ position: 'absolute', bottom: 4, left: 0, right: 0, textAlign: 'center', fontSize: 7.5, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>{p.cap}</div>}
+                {p.cap && <div style={{ position: 'absolute', bottom: 6, left: 0, right: 0, textAlign: 'center', fontSize: 9.5, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>{p.cap}</div>}
               </div>
             ))}
-          </div>
-          <div style={{ padding: '8px 16px 0' }}>
-            <div style={{ background: '#FDFAF5', border: '0.5px solid rgba(43,42,40,0.1)', padding: '16px 18px', boxShadow: '0 2px 6px rgba(43,42,40,0.08)', position: 'relative' }}>
-              <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, left: -3, transform: 'rotate(-15deg)' }} />
-              <div style={{ position: 'absolute', width: 13, height: 13, background: 'rgba(255,235,170,0.8)', borderRadius: 1, top: -3, right: -3, transform: 'rotate(15deg)' }} />
-              <p style={{ fontSize: 13.5, color: '#3D3128', fontFamily: 'Georgia, serif', lineHeight: 1.55, marginBottom: 9 }}>
-                Remember the date stamp on old disposable camera prints? <em style={{ color: '#D97A43', fontStyle: 'italic' }}>We brought it back.</em>
-              </p>
-              <div style={{ fontFamily: 'Courier New, monospace', fontSize: 12, color: '#E8841A', fontWeight: 700, marginBottom: 9, letterSpacing: '0.07em' }}>5 - 13 - 25 - TAMPA, FL</div>
-              <p style={{ fontSize: 12.5, color: '#5C4A3A', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
-                Upload your photos, choose your stamp style, and we print and ship them to your door.
-              </p>
-            </div>
           </div>
         </div>
       )}
