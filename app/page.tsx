@@ -27,13 +27,32 @@ const STORY_NOTE = [
   'we can\'t freeze time. but we can preserve it."',
 ]
 
+/**
+ * The homepage prints.
+ *
+ * The date stamp used to be a <div> of orange Courier sitting on top of the
+ * photo — a drawing of the product rather than the product. Now each of these
+ * JPEGs has been through drawStamp(), the same function that renders the file
+ * Prodigi receives, so what a visitor sees on the homepage is literally what
+ * comes back in the envelope: the same drawn segments, the same format, the
+ * same size relative to the paper.
+ *
+ * Baked in, left to right: 8 14 '22 (bl) · 9 18 '23 SCOTLAND (tr) ·
+ * 7 4 '23 (br) · 11 30 '24 (br) · 12 25 '23 KENNETT SQUARE, PA (br) ·
+ * 7 12 '24 CHESAPEAKE BAY, MD (br).
+ *
+ * All six are 684x912 — exactly 3:4, which every card below matches, so
+ * object-fit has nothing to crop and cannot clip a stamp off an edge.
+ * To change a date or a location, re-render the source photo through
+ * drawStamp rather than drawing over it here.
+ */
 const PHOTOS = [
-  { src: '/photos/photo1.jpg', stamp: '8 - 14 - 22', cap: null, loc: null, rot: -3.5, stampPos: 'br' },
-  { src: '/photos/photo2.jpg', stamp: '9 - 18 - 23', cap: null, loc: 'SCOTLAND', rot: 2.5, stampPos: 'tr' },
-  { src: '/photos/photo3.jpg', stamp: '7 - 04 - 23', cap: 'first beach', loc: null, rot: -2, stampPos: 'br' },
-  { src: '/photos/photo4.jpg', stamp: '11 - 30 - 24', cap: null, loc: null, rot: 3, stampPos: 'br' },
-  { src: '/photos/photo5.jpg', stamp: '12 - 25 - 23', cap: 'first christmas', loc: 'Kennett Square, PA', rot: -1.5, stampPos: 'bl' },
-  { src: '/photos/photo6.jpg', stamp: '7 - 12 - 24', cap: null, loc: 'Chesapeake Bay, MD', rot: 2, stampPos: 'br' },
+  { src: '/photos/photo1.jpg', cap: null, rot: -3.5 },
+  { src: '/photos/photo2.jpg', cap: null, rot: 2.5 },
+  { src: '/photos/photo3.jpg', cap: 'first beach', rot: -2 },
+  { src: '/photos/photo4.jpg', cap: null, rot: 3 },
+  { src: '/photos/photo5.jpg', cap: 'first christmas', rot: -1.5 },
+  { src: '/photos/photo6.jpg', cap: null, rot: 2 },
 ]
 
 // Natural size of the desktop scrapbook row. The whole row is laid out at this
@@ -323,8 +342,7 @@ export default function HomePage() {
           {/* Photo 1 */}
           <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-3.5deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, zIndex: 9 }}>
             <TapeTop />
-            <img src="/photos/photo1.jpg" alt="memory" style={{ width: 248, height: 326, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 11, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>8 - 14 - 22</div>
+            <img src="/photos/photo1.jpg" alt="memory" style={{ width: 248, height: 331, objectFit: 'cover', display: 'block' }} loading="eager" />
           </div>
 
           {/* Story notecard — FIX 7: larger size, no italic on body, darker color */}
@@ -341,23 +359,20 @@ export default function HomePage() {
           {/* Photo 2 — Scotland */}
           <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(2.5deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: OVERLAP, zIndex: 7 }}>
             <TapeTop />
-            <img src="/photos/photo2.jpg" alt="Scotland" style={{ width: 245, height: 319, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', top: 10, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 11, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>9 - 18 - 23<br />SCOTLAND</div>
+            <img src="/photos/photo2.jpg" alt="Scotland" style={{ width: 245, height: 327, objectFit: 'cover', display: 'block' }} loading="eager" />
           </div>
 
           {/* Photo 3 — beach */}
           <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-2deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: OVERLAP_AIR, zIndex: 6 }}>
             <TapeTop />
-            <img src="/photos/photo3.jpg" alt="first beach" style={{ width: 251, height: 329, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 11, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>7 - 04 - 23</div>
+            <img src="/photos/photo3.jpg" alt="first beach" style={{ width: 251, height: 335, objectFit: 'cover', display: 'block' }} loading="eager" />
             <div style={{ position: 'absolute', bottom: 7, left: 0, right: 0, textAlign: 'center', fontSize: 11, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>first beach</div>
           </div>
 
           {/* Photo 4 — dinner */}
           <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(3deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: OVERLAP_AIR, zIndex: 5 }}>
             <TapeTop />
-            <img src="/photos/photo4.jpg" alt="memory" style={{ width: 240, height: 313, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 11, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>11 - 30 - 24</div>
+            <img src="/photos/photo4.jpg" alt="memory" style={{ width: 240, height: 320, objectFit: 'cover', display: 'block' }} loading="eager" />
           </div>
 
           {/* Feature notecard — FIX 7: larger size, less italic, darker */}
@@ -367,7 +382,7 @@ export default function HomePage() {
             <p style={{ fontSize: 15, color: '#3D3128', fontFamily: 'Georgia, serif', lineHeight: 1.55, marginBottom: 10 }}>
               Remember the date stamp on old disposable camera prints? <em style={{ color: '#D97A43', fontStyle: 'italic' }}>We brought it back.</em>
             </p>
-            <div style={{ fontFamily: 'Courier New, monospace', fontSize: 13.5, color: '#E8841A', fontWeight: 700, marginBottom: 10, letterSpacing: '0.07em' }}>5 - 13 - 25 - TAMPA, FL</div>
+            <div style={{ fontFamily: 'Courier New, monospace', fontSize: 13.5, color: '#E8841A', fontWeight: 700, marginBottom: 10, letterSpacing: '0.07em' }}>5 13 '25 · TAMPA, FL</div>
             <p style={{ fontSize: 14, color: '#5C4A3A', fontFamily: 'Georgia, serif', lineHeight: 1.6 }}>
               Upload your photos, choose your stamp style, and we print and ship them to your door.
             </p>
@@ -376,15 +391,13 @@ export default function HomePage() {
           {/* Photo 6 — dog at bay */}
           <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(2deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: OVERLAP, zIndex: 3 }}>
             <TapeTop />
-            <img src="/photos/photo6.jpg" alt="Chesapeake Bay" style={{ width: 240, height: 316, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 11, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>7 - 12 - 24<br />Chesapeake Bay, MD</div>
+            <img src="/photos/photo6.jpg" alt="Chesapeake Bay" style={{ width: 240, height: 320, objectFit: 'cover', display: 'block' }} loading="eager" />
           </div>
 
           {/* Photo 5 — B&W christmas */}
           <div style={{ background: 'white', padding: '7px 7px 26px', transform: 'rotate(-1.5deg)', boxShadow: '0 3px 12px rgba(43,42,40,0.12)', position: 'relative', flexShrink: 0, marginLeft: OVERLAP, zIndex: 2 }}>
             <TapeTop />
-            <img src="/photos/photo5.jpg" alt="first christmas" style={{ width: 245, height: 319, objectFit: 'cover', display: 'block' }} loading="eager" />
-            <div style={{ position: 'absolute', bottom: 28, right: 8, fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 11, lineHeight: 1.4, letterSpacing: '0.06em', textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>12 - 25 - 23<br />Kennett Square, PA</div>
+            <img src="/photos/photo5.jpg" alt="first christmas" style={{ width: 245, height: 327, objectFit: 'cover', display: 'block' }} loading="eager" />
             <div style={{ position: 'absolute', bottom: 7, left: 0, right: 0, textAlign: 'center', fontSize: 11, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>first christmas</div>
           </div>
 
@@ -417,10 +430,7 @@ export default function HomePage() {
                 style={{ background: 'white', padding: '6px 6px 25px', marginRight: 12, transform: `rotate(${p.rot}deg)`, boxShadow: '0 2px 8px rgba(43,42,40,0.1)', position: 'relative', flexShrink: 0 }}
               >
                 <div style={{ position: 'absolute', width: 38, height: 11, background: 'rgba(255,235,170,0.75)', borderRadius: 1, top: -5, left: '50%', transform: 'translateX(-50%)' }} />
-                <img src={p.src} alt={p.cap ?? 'memory'} style={{ width: 170, height: 220, objectFit: 'cover', display: 'block' }} loading="eager" />
-                <div style={{ position: 'absolute', ...(p.stampPos === 'tr' ? { top: 10, right: 8 } : p.stampPos === 'bl' ? { bottom: 29, left: 7 } : { bottom: 28, right: 8 }), fontFamily: 'Courier New, monospace', color: '#E8841A', fontWeight: 700, fontSize: 9.5, lineHeight: 1.4, textShadow: '0 0 3px rgba(232,132,26,0.4)' }}>
-                  {p.stamp}{p.loc && <><br />{p.loc}</>}
-                </div>
+                <img src={p.src} alt={p.cap ?? 'memory'} style={{ width: 170, height: 227, objectFit: 'cover', display: 'block' }} loading="eager" />
                 {p.cap && <div style={{ position: 'absolute', bottom: 6, left: 0, right: 0, textAlign: 'center', fontSize: 9.5, color: '#8A6F5A', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>{p.cap}</div>}
               </div>
             ))}
