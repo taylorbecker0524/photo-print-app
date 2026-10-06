@@ -1469,11 +1469,11 @@ export default function StudioPage(){
                           onChange={e=>{if(e.target.value){const dt=new Date(activePhoto.stamp.capturedAt!);const[y,m,d]=e.target.value.split('-');dt.setFullYear(+y,+m-1,+d);updateStamp(activePhoto.id,{capturedAt:dt.toISOString(),hasExifDate:true})}}}
                           style={{...C.input,fontSize:13,padding:'8px 10px'}}/>
                         <div style={{display:'flex',gap:6,marginTop:6}}>
-                          {/* FIX 4: classic format label updated to MM DD YYYY */}
+                          {/* The classic label shows the real output: the date back's own format. */}
                           {(['classic','modern'] as const).map(fmt=>(
                             <button key={fmt} onClick={()=>updateStamp(activePhoto.id,{dateFormat:fmt})}
                               style={{flex:1,padding:'5px 8px',fontSize:10,fontFamily:'Courier New, monospace',border:`1px solid ${(activePhoto.stamp.dateFormat??'classic')===fmt?'#D97A43':'rgba(43,42,40,0.15)'}`,borderRadius:6,background:(activePhoto.stamp.dateFormat??'classic')===fmt?'#F2D5C0':'#F7F3EE',cursor:'pointer',color:(activePhoto.stamp.dateFormat??'classic')===fmt?'#8A3A10':'#8A6F5A'}}>
-                              {fmt==='classic'?'05 17 2026':'May 17, 2026'}
+                              {fmt==='classic'?"5 17 '26":'May 17, 2026'}
                             </button>
                           ))}
                         </div>
@@ -1628,7 +1628,7 @@ export default function StudioPage(){
                           return (
                             <button key={fmt} onClick={()=>applyBulkStamp({dateFormat:fmt})}
                               style={{flex:1,padding:'5px 8px',fontSize:10,fontFamily:'Courier New, monospace',border:`1px solid ${isActive?'#D97A43':'rgba(43,42,40,0.15)'}`,borderRadius:6,background:isActive?'#F2D5C0':'#F7F3EE',cursor:'pointer',color:isActive?'#8A3A10':'#8A6F5A'}}>
-                              {fmt==='classic'?'05 17 2026':'May 17, 2026'}
+                              {fmt==='classic'?"5 17 '26":'May 17, 2026'}
                             </button>
                           )
                         })}
