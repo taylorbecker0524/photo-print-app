@@ -231,8 +231,12 @@ export function drawStamp(
   }
 
   const fontDef = getStampFont(fontKey)
-  const fs = cw * 0.03 * fontDef.sizeMult
-  const pad = cw * 0.04
+  // Short edge here too, for the same reason as drawDateBack below: a stamp
+  // that changes size when you rotate the paper is a stamp that looks wrong
+  // next to its neighbour in the envelope.
+  const base = Math.min(cw, ch)
+  const fs = base * 0.03 * fontDef.sizeMult
+  const pad = base * 0.04
   const lineH = fs * 1.45
   ctx.font = `${stamp.style === 'burn' ? 'bold' : fontDef.weight} ${Math.round(fs)}px ${fontDef.family}`
   ctx.textBaseline = 'alphabetic'
@@ -248,7 +252,7 @@ export function drawStamp(
   if (stamp.style === 'burn') {
     ctx.fillStyle = '#E8841A'
     ctx.shadowColor = 'rgba(232,132,26,0.6)'
-    ctx.shadowBlur = Math.max(1, cw * 0.006)
+    ctx.shadowBlur = Math.max(1, base * 0.006)
     lines.forEach((l, i) => ctx.fillText(l, bx, by + pad * 0.4 + (i + 1) * lineH - lineH * 0.2))
     ctx.shadowBlur = 0
     ctx.shadowColor = 'transparent'
@@ -280,9 +284,18 @@ function drawDateBack(
   stamp: StampConfig,
   lines: string[]
 ): void {
-  const digitH = cw * 0.045
+  // Sized off the SHORT edge of the paper, not the width.
+  //
+  // Width sounds right until you print the same photo both ways round. A 4x6
+  // laid out landscape is 6 inches wide and 4 inches tall, so scaling by width
+  // gave it a date half again as tall as the identical 4x6 in portrait — same
+  // paper, same order, visibly different stamp. The short edge is 4 inches on
+  // a 4x6 whichever way it is turned, so the date is now the same physical
+  // size on both: 4.5% of the short edge, about 0.18in on a 4x6.
+  const base = Math.min(cw, ch)
+  const digitH = base * 0.045
   const textFs = digitH * 0.44
-  const pad = cw * 0.04
+  const pad = base * 0.04
   const gap = digitH * 0.34
 
   // Courier New ships with every browser and every OS. Nothing to download,
