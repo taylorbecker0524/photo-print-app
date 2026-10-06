@@ -147,8 +147,10 @@ export const getStampFont = (key: StampFont) => STAMP_FONTS.find(f => f.key === 
 
 export const fmtDate = (iso: string, fmt: 'modern' | 'classic' = 'classic') => {
   const d = new Date(iso)
+  // The disposable's own format: no leading zero on the month, and a tick
+  // before a two-digit year. "8 22 '26", exactly what the date back printed.
   return fmt === 'classic'
-    ? `${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getDate()).padStart(2, '0')} ${d.getFullYear()}`
+    ? `${d.getMonth() + 1} ${d.getDate()} '${String(d.getFullYear()).slice(-2)}`
     : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 export const fmtTime = (iso: string) =>
@@ -220,9 +222,17 @@ export function drawStamp(
   const lines = buildStampLines(stamp)
   if (!lines.length) return
 
-  const fontDef = getStampFont(stamp.stampFont ?? 'classic')
-  const fs = cw * 0.022 * fontDef.sizeMult
-  const pad = cw * 0.025
+  const fontKey = stamp.stampFont ?? 'classic'
+  // The classic burn is the date back itself, drawn in segments. The other two
+  // faces are typeset, and keep the old path.
+  if (stamp.style === 'burn' && fontKey === 'classic') {
+    drawDateBack(ctx, cw, ch, stamp, lines)
+    return
+  }
+
+  const fontDef = getStampFont(fontKey)
+  const fs = cw * 0.03 * fontDef.sizeMult
+  const pad = cw * 0.04
   const lineH = fs * 1.45
   ctx.font = `${stamp.style === 'burn' ? 'bold' : fontDef.weight} ${Math.round(fs)}px ${fontDef.family}`
   ctx.textBaseline = 'alphabetic'
@@ -238,9 +248,7 @@ export function drawStamp(
   if (stamp.style === 'burn') {
     ctx.fillStyle = '#E8841A'
     ctx.shadowColor = 'rgba(232,132,26,0.6)'
-    // The preview's 3px glow is a fixed pixel value on a ~700px canvas. Scaled
-    // here, so a 3000px print gets the same soft edge rather than a hard one.
-    ctx.shadowBlur = Math.max(1, cw * 0.0043)
+    ctx.shadowBlur = Math.max(1, cw * 0.006)
     lines.forEach((l, i) => ctx.fillText(l, bx, by + pad * 0.4 + (i + 1) * lineH - lineH * 0.2))
     ctx.shadowBlur = 0
     ctx.shadowColor = 'transparent'
@@ -250,6 +258,214 @@ export function drawStamp(
     ctx.fillStyle = 'rgba(43,42,40,0.85)'
     lines.forEach((l, i) => ctx.fillText(l, bx + pad * 0.8, by + pad * 0.4 + (i + 1) * lineH - lineH * 0.2))
   }
+}
+
+/** A line is numerals if the segment display can actually show it. */
+const isNumericLine = (l: string) => /^[0-9 :'\-]+$/.test(l)
+
+/**
+ * The real thing: the date in burnt segments, anything else in small machine
+ * type underneath it.
+ *
+ * The date is three times the height it used to be. That is not decoration —
+ * at the old 2.2% of the print width the digits came back from the lab thin
+ * and grey, which is the complaint that started this. A disposable's date sat
+ * at roughly 4.5% of the frame width, and that is what reads as the real thing
+ * in your hand.
+ */
+function drawDateBack(
+  ctx: CanvasRenderingContext2D,
+  cw: number,
+  ch: number,
+  stamp: StampConfig,
+  lines: string[]
+): void {
+  const digitH = cw * 0.045
+  const textFs = digitH * 0.44
+  const pad = cw * 0.04
+  const gap = digitH * 0.34
+
+  // Courier New ships with every browser and every OS. Nothing to download,
+  // so nothing can arrive too late and put the location on paper in the wrong
+  // face — the failure that made the date itself worth redrawing.
+  const textFont = `bold ${Math.round(textFs)}px "Courier New", monospace`
+
+  const rows = lines.map(l => {
+    if (isNumericLine(l)) {
+      return { text: l, seg: true, w: measureSevenSegment(l, digitH), h: digitH }
+    }
+    ctx.font = textFont
+    return { text: l.toUpperCase(), seg: false, w: ctx.measureText(l.toUpperCase()).width, h: textFs }
+  })
+
+  const blockW = Math.max(...rows.map(r => r.w))
+  const blockH = rows.reduce((sum, r) => sum + r.h, 0) + gap * (rows.length - 1)
+
+  const right = stamp.position === 'br' || stamp.position === 'tr'
+  const top = stamp.position === 'tl' || stamp.position === 'tr'
+  const bx = right ? cw - pad - blockW : pad
+  const by = top ? pad : ch - pad - blockH
+
+  let y = by
+  for (const r of rows) {
+    const x = right ? bx + (blockW - r.w) : bx
+    if (r.seg) {
+      drawSevenSegment(ctx, r.text, x, y, digitH)
+    } else {
+      ctx.save()
+      ctx.font = textFont
+      ctx.textBaseline = 'top'
+      ctx.shadowColor = 'rgba(243,138,32,0.7)'
+      ctx.shadowBlur = textFs * 0.5
+      ctx.fillStyle = 'rgba(205,86,8,0.8)'
+      ctx.fillText(r.text, x, y)
+      ctx.shadowBlur = textFs * 0.16
+      ctx.fillStyle = '#E07B16'
+      ctx.fillText(r.text, x, y)
+      ctx.shadowBlur = 0
+      ctx.fillStyle = '#F6A63A'
+      ctx.fillText(r.text, x, y)
+      ctx.restore()
+    }
+    y += r.h + gap
+  }
+}
+
+
+/**
+ * THE DATE BACK.
+ *
+ * A disposable camera did not typeset its date. A row of LEDs behind the film
+ * gate flashed while the shutter was open, and seven little bars per digit
+ * burned themselves into the emulsion. That is why the numbers look the way
+ * they do: square shoulders, a visible gap between every bar, and a halo where
+ * the light bled into the grain around it.
+ *
+ * We were approximating that with a monospace webfont, which is a drawing of
+ * the idea rather than the thing. It also carried a failure we could not see
+ * from here: a canvas draws with whatever font is loaded at the instant of
+ * fillText, so a slow font meant a print set in Courier New, and a print
+ * cannot be re-rendered once it is in an envelope.
+ *
+ * So the segments are drawn. No font to load, nothing to fall back to, and
+ * every measurement is a fraction of the print's width — which means the
+ * stamp is the same size relative to the paper whether it lands on a 4x6 or
+ * an 8x10.
+ */
+
+/** Which of the seven bars each character lights. */
+const SEVEN_SEG: Record<string, string> = {
+  '0': 'abcdef', '1': 'bc', '2': 'abged', '3': 'abgcd', '4': 'fgbc',
+  '5': 'afgcd', '6': 'afgedc', '7': 'abc', '8': 'abcdefg', '9': 'abcdfg',
+  '-': 'g',
+}
+
+/** Width of each character's cell, as a multiple of one digit's width. */
+function segAdvance(ch: string, w: number): number {
+  if (ch === ' ') return w * 0.55
+  if (ch === "'") return w * 0.62
+  if (ch === ':') return w * 0.42
+  return w * 1.3
+}
+
+export function measureSevenSegment(text: string, digitH: number): number {
+  const w = digitH * 0.58
+  let total = 0
+  for (const ch of text) total += segAdvance(ch, w)
+  return Math.max(0, total - w * 0.3)
+}
+
+/** Lay one character's lit bars into the current path. */
+function addSegGlyph(
+  ctx: CanvasRenderingContext2D,
+  ch: string, x: number, y: number, w: number, h: number, t: number
+): void {
+  if (ch === "'") {
+    // The year tick. Slanted, like the LED block that printed it, and kept
+    // inside its own cell — drawn wider it ran into the first digit of the
+    // year, and the overlap cancelled it out of the shared path entirely.
+    const tw = t * 1.25
+    ctx.moveTo(x + w * 0.26, y)
+    ctx.lineTo(x + w * 0.26 + tw, y)
+    ctx.lineTo(x + w * 0.08 + tw, y + h * 0.34)
+    ctx.lineTo(x + w * 0.08, y + h * 0.34)
+    ctx.closePath()
+    return
+  }
+  if (ch === ':') {
+    const s = t * 0.9
+    ctx.rect(x + w * 0.1, y + h * 0.30 - s / 2, s, s)
+    ctx.rect(x + w * 0.1, y + h * 0.70 - s / 2, s, s)
+    return
+  }
+  const segs = SEVEN_SEG[ch]
+  if (!segs) return
+
+  // A real display leaves a sliver of dark between neighbouring bars. Without
+  // it the digits read as solid blocks and the whole illusion goes.
+  const g = t * 0.17
+  const mid = y + h / 2
+  const horiz = (cy: number) => {
+    ctx.moveTo(x + g, cy)
+    ctx.lineTo(x + g + t / 2, cy - t / 2)
+    ctx.lineTo(x + w - g - t / 2, cy - t / 2)
+    ctx.lineTo(x + w - g, cy)
+    ctx.lineTo(x + w - g - t / 2, cy + t / 2)
+    ctx.lineTo(x + g + t / 2, cy + t / 2)
+    ctx.closePath()
+  }
+  const vert = (cx: number, y0: number, y1: number) => {
+    ctx.moveTo(cx, y0 + g)
+    ctx.lineTo(cx + t / 2, y0 + g + t / 2)
+    ctx.lineTo(cx + t / 2, y1 - g - t / 2)
+    ctx.lineTo(cx, y1 - g)
+    ctx.lineTo(cx - t / 2, y1 - g - t / 2)
+    ctx.lineTo(cx - t / 2, y0 + g + t / 2)
+    ctx.closePath()
+  }
+
+  if (segs.includes('a')) horiz(y + t / 2)
+  if (segs.includes('g')) horiz(mid)
+  if (segs.includes('d')) horiz(y + h - t / 2)
+  if (segs.includes('f')) vert(x + t / 2, y, mid)
+  if (segs.includes('b')) vert(x + w - t / 2, y, mid)
+  if (segs.includes('e')) vert(x + t / 2, mid, y + h)
+  if (segs.includes('c')) vert(x + w - t / 2, mid, y + h)
+}
+
+/**
+ * Draw a line of seven-segment characters with the light bleed around them.
+ *
+ * Three passes, outside in. The wide, dim pass is the glow in the grain; the
+ * middle pass is the edge of the burn; the last is the bar itself. Doing it in
+ * one pass gives a flat orange sticker, which is what the old stamp looked
+ * like on paper.
+ */
+export function drawSevenSegment(
+  ctx: CanvasRenderingContext2D,
+  text: string, x: number, y: number, digitH: number
+): void {
+  const w = digitH * 0.58
+  const t = w * 0.23
+  ctx.save()
+  ctx.beginPath()
+  let cx = x
+  for (const ch of text) {
+    addSegGlyph(ctx, ch, cx, y, w, digitH, t)
+    cx += segAdvance(ch, w)
+  }
+  ctx.shadowColor = 'rgba(243,138,32,0.75)'
+  ctx.shadowBlur = digitH * 0.42
+  ctx.fillStyle = 'rgba(205,86,8,0.75)'
+  ctx.fill()
+  ctx.fill()
+  ctx.shadowBlur = digitH * 0.14
+  ctx.fillStyle = '#E07B16'
+  ctx.fill()
+  ctx.shadowBlur = 0
+  ctx.fillStyle = '#F6A63A'
+  ctx.fill()
+  ctx.restore()
 }
 
 const MAX_PRINT_PIXELS = 3000  // longest edge: 8x10 at 300dpi
@@ -338,7 +554,13 @@ export async function renderForPrint(
 
   if (needsStamp) {
     const area = stampArea(mode, cw, ch, srcW, srcH)
-    await ensureStampFont(stamp.stampFont ?? 'classic', area.w * 0.022)
+    // The drawn date back needs no webfont, so it must not wait for one. This
+    // used to block the export for up to three seconds per photo on a face it
+    // no longer uses.
+    const fontKey = stamp.stampFont ?? 'classic'
+    if (!(stamp.style === 'burn' && fontKey === 'classic')) {
+      await ensureStampFont(fontKey, area.w * 0.03)
+    }
     ctx.save()
     ctx.translate(area.x, area.y)
     drawStamp(ctx, area.w, area.h, stamp)
