@@ -55,7 +55,8 @@ export async function GET(req: NextRequest) {
     estimateProductCostCents,
     estimateShippingCostCents,
     estimateStripeFeeCents,
-    PRODIGI_TAX_RATE,
+    estimateStripeTaxFeeCents,
+    prodigiTaxRateFor,
   } = await import('@/lib/costs')
 
   const supabase = createServerSupabase()
@@ -82,9 +83,11 @@ export async function GET(req: NextRequest) {
     'est_total_cost', 'est_net', 'est_margin_pct',
     'promo_code',
     'stripe_payment_intent', 'prodigi_order_id', 'tracking_number',
-    // Last on purpose: the bookkeeping sheet addresses columns by letter, so a
-    // new field anywhere else would silently re-point every formula.
+    // Append only, never insert: the bookkeeping sheet addresses columns by
+    // letter, so a new field anywhere but the end silently re-points every
+    // formula in it.
     'is_test',
+    'est_stripe_tax_fee',
   ]
 
   const rows = (orders ?? []).map((o: any) => {
@@ -116,10 +119,21 @@ export async function GET(req: NextRequest) {
     // ships in two. Counting one parcel here overstated net by $7.22 on the
     // first real order.
     const shippingCost = reachedProdigi ? estimateShippingCostCents(items) : 0
-    const prodigiTax = Math.round((productCost + shippingCost) * PRODIGI_TAX_RATE)
+    const shipState = o.shipping_address?.state ?? ''
+    // Both of these depend on where the order went, and one of them on when it
+    // was placed: Prodigi stopped taxing Florida deliveries once the resale
+    // certificate landed, and Stripe Tax only bills where we hold a
+    // registration. A flat rate on either one misreports the margin.
+    const prodigiTax = Math.round(
+      (productCost + shippingCost) * prodigiTaxRateFor(shipState, o.created_at)
+    )
     const stripeFee = estimateStripeFeeCents(gross)
+    // 50c per order, and genuinely missing until now — every Florida order in
+    // this export used to read 50c better than it really was.
+    const stripeTaxFee = estimateStripeTaxFeeCents(shipState)
 
-    const totalCost = (reachedProdigi ? productCost : 0) + shippingCost + prodigiTax + stripeFee
+    const totalCost =
+      (reachedProdigi ? productCost : 0) + shippingCost + prodigiTax + stripeFee + stripeTaxFee
     const net = revenue - totalCost
     // Measured against what we keep, not what we charged.
     const marginPct = revenue > 0 ? ((net / revenue) * 100).toFixed(1) : ''
@@ -129,7 +143,7 @@ export async function GET(req: NextRequest) {
       o.id,
       o.status,
       o.email,
-      o.shipping_address?.state ?? '',
+      shipState,
       prints,
       sizes,
       money(gross),
@@ -150,6 +164,7 @@ export async function GET(req: NextRequest) {
       o.prodigi_order_id ?? '',
       o.tracking_number ?? '',
       o.is_test ? 'true' : 'false',
+      money(stripeTaxFee),
     ]
   })
 
