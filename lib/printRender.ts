@@ -235,32 +235,34 @@ export function drawStamp(
   // that changes size when you rotate the paper is a stamp that looks wrong
   // next to its neighbour in the envelope.
   const base = Math.min(cw, ch)
-  const fs = base * 0.03 * fontDef.sizeMult
-  const pad = base * 0.04
+  const fs = base * 0.021 * fontDef.sizeMult
+  const padX = base * 0.14
+  const padY = base * 0.055
   const lineH = fs * 1.45
   ctx.font = `${stamp.style === 'burn' ? 'bold' : fontDef.weight} ${Math.round(fs)}px ${fontDef.family}`
   ctx.textBaseline = 'alphabetic'
 
-  const boxW = Math.max(...lines.map(l => ctx.measureText(l).width)) + pad * 2
-  const boxH = lines.length * lineH + pad * 0.8
-  let bx = pad
-  let by = ch - boxH - pad
-  if (stamp.position === 'br') bx = cw - boxW - pad
-  if (stamp.position === 'tl') by = pad
-  if (stamp.position === 'tr') { bx = cw - boxW - pad; by = pad }
+  const inner = fs * 0.5
+  const boxW = Math.max(...lines.map(l => ctx.measureText(l).width)) + inner * 2
+  const boxH = lines.length * lineH + inner * 0.8
+  let bx = padX
+  let by = ch - boxH - padY
+  if (stamp.position === 'br') bx = cw - boxW - padX
+  if (stamp.position === 'tl') by = padY
+  if (stamp.position === 'tr') { bx = cw - boxW - padX; by = padY }
 
   if (stamp.style === 'burn') {
     ctx.fillStyle = '#E8841A'
     ctx.shadowColor = 'rgba(232,132,26,0.6)'
     ctx.shadowBlur = Math.max(1, base * 0.006)
-    lines.forEach((l, i) => ctx.fillText(l, bx, by + pad * 0.4 + (i + 1) * lineH - lineH * 0.2))
+    lines.forEach((l, i) => ctx.fillText(l, bx + inner, by + inner * 0.4 + (i + 1) * lineH - lineH * 0.2))
     ctx.shadowBlur = 0
     ctx.shadowColor = 'transparent'
   } else {
     ctx.fillStyle = 'rgba(247,243,238,0.65)'
     ctx.fillRect(bx, by, boxW, boxH)
     ctx.fillStyle = 'rgba(43,42,40,0.85)'
-    lines.forEach((l, i) => ctx.fillText(l, bx + pad * 0.8, by + pad * 0.4 + (i + 1) * lineH - lineH * 0.2))
+    lines.forEach((l, i) => ctx.fillText(l, bx + inner * 0.8, by + inner * 0.4 + (i + 1) * lineH - lineH * 0.2))
   }
 }
 
@@ -293,9 +295,18 @@ function drawDateBack(
   // a 4x6 whichever way it is turned, so the date is now the same physical
   // size on both: 4.5% of the short edge, about 0.18in on a 4x6.
   const base = Math.min(cw, ch)
-  const digitH = base * 0.045
+  // Measured off a real disposable print: the digits are about 3% of the short
+  // edge and the date sits well in from the side, not jammed into the corner.
+  // The LEDs were mounted a fixed distance inside the film gate, so the stamp
+  // always floated in from the edge — tucking it tight to the corner is the
+  // tell that something was added in software afterwards.
+  //
+  // Horizontal and vertical insets differ on purpose, and by a lot: the date
+  // rides low but stands well clear of the side.
+  const digitH = base * 0.032
   const textFs = digitH * 0.44
-  const pad = base * 0.04
+  const padX = base * 0.14
+  const padY = base * 0.055
   const gap = digitH * 0.34
 
   // Courier New ships with every browser and every OS. Nothing to download,
@@ -316,8 +327,13 @@ function drawDateBack(
 
   const right = stamp.position === 'br' || stamp.position === 'tr'
   const top = stamp.position === 'tl' || stamp.position === 'tr'
-  const bx = right ? cw - pad - blockW : pad
-  const by = top ? pad : ch - pad - blockH
+  // A long enough location or custom line could otherwise push the block off
+  // the sheet, so nothing is ever allowed nearer than `edge` to any side.
+  const edge = base * 0.03
+  const clamp = (v: number, span: number, extent: number) =>
+    Math.min(Math.max(v, edge), Math.max(edge, extent - edge - span))
+  const bx = clamp(right ? cw - padX - blockW : padX, blockW, cw)
+  const by = clamp(top ? padY : ch - padY - blockH, blockH, ch)
 
   let y = by
   for (const r of rows) {
