@@ -322,22 +322,46 @@ function drawDateBack(
     return { text: l.toUpperCase(), seg: false, w: ctx.measureText(l.toUpperCase()).width, h: textFs }
   })
 
-  const blockW = Math.max(...rows.map(r => r.w))
+  const widest = Math.max(...rows.map(r => r.w))
   const blockH = rows.reduce((sum, r) => sum + r.h, 0) + gap * (rows.length - 1)
 
   const right = stamp.position === 'br' || stamp.position === 'tr'
   const top = stamp.position === 'tl' || stamp.position === 'tr'
+
+  // Every line starts at the same left edge, including on a right-hand stamp.
+  //
+  // They used to be right-aligned to each other, which looked tidy in isolation
+  // and wrong on a photo: a location longer than the date pushed its own first
+  // letter out to the left of the first digit, so the block hung off the date
+  // instead of sitting under it. Sharing a left edge means the place name
+  // starts under the first digit and runs past the last one, which is how a
+  // caption reads.
+  //
+  // The DATE is what gets positioned — its right edge lands on the inset, the
+  // same place it sat before this change — and the location is laid out from
+  // the date's left edge, free to overhang on the right.
+  const dateRow = rows.find(r => r.seg) ?? rows[0]
   // A long enough location or custom line could otherwise push the block off
   // the sheet, so nothing is ever allowed nearer than `edge` to any side.
   const edge = base * 0.03
-  const clamp = (v: number, span: number, extent: number) =>
-    Math.min(Math.max(v, edge), Math.max(edge, extent - edge - span))
-  const bx = clamp(right ? cw - padX - blockW : padX, blockW, cw)
-  const by = clamp(top ? padY : ch - padY - blockH, blockH, ch)
+  let bx = right ? cw - padX - dateRow.w : padX
+  // Only the overhang can run out of room, so pull the whole block back by
+  // however much it overshoots rather than letting one line fall off.
+  const inkShift = segFirstInkOffset(dateRow.seg ? dateRow.text : '', digitH)
+  const reach = Math.max(dateRow.w, inkShift + widest)
+  if (bx + reach > cw - edge) bx = cw - edge - reach
+  if (bx < edge) bx = edge
+  const by = Math.min(
+    Math.max(top ? padY : ch - padY - blockH, edge),
+    Math.max(edge, ch - edge - blockH)
+  )
+
+  // Line the text up with the first DIGIT, not the first cell.
+  const inkX = bx + segFirstInkOffset(dateRow.seg ? dateRow.text : '', digitH)
 
   let y = by
   for (const r of rows) {
-    const x = right ? bx + (blockW - r.w) : bx
+    const x = r.seg ? bx : inkX
     if (r.seg) {
       drawSevenSegment(ctx, r.text, x, y, digitH)
     } else {
@@ -395,6 +419,32 @@ function segAdvance(ch: string, w: number): number {
   if (ch === "'") return w * 0.62
   if (ch === ':') return w * 0.42
   return w * 1.3
+}
+
+/**
+ * How far the first character's ink sits inside its own cell.
+ *
+ * Every glyph occupies a full-width cell, but the bars that light up do not
+ * fill it. A leading "1" lights only the two right-hand bars, so its ink
+ * begins almost a whole digit-width in from where the cell starts — which is
+ * why a location set at the same x as the date looked shifted left under it.
+ * Aligning the cells is not the same as aligning what you can see.
+ */
+export function segFirstInkOffset(text: string, digitH: number): number {
+  const ch = text[0]
+  if (!ch) return 0
+  const w = digitH * 0.58
+  const t = w * 0.23
+  if (ch === "'") return w * 0.08
+  if (ch === ':') return w * 0.1
+  const segs = SEVEN_SEG[ch]
+  if (!segs) return 0
+  // A left-hand vertical reaches the very edge of the cell.
+  if (segs.includes('f') || segs.includes('e')) return 0
+  // Otherwise a horizontal bar starts just inside it...
+  if (segs.includes('a') || segs.includes('g') || segs.includes('d')) return t * 0.17
+  // ...and a bare "1" has nothing at all on the left.
+  return w - t
 }
 
 export function measureSevenSegment(text: string, digitH: number): number {
