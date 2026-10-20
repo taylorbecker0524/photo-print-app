@@ -151,6 +151,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </a>
             ))}
           </nav>
+          {/* The Instagram account was already declared to Google in sameAs
+              above, but that is machine-readable only — this is the link a
+              person can actually follow. rel="me" is the matching convention
+              on the human side: it states that the profile and this site are
+              the same owner, which is what the structured data claims too. */}
+          <p style={{ marginBottom: 12 }}>
+            <a
+              href="https://www.instagram.com/archiveyoursprints/"
+              target="_blank"
+              rel="me noopener noreferrer"
+              aria-label="Archive Yours on Instagram"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: 'Courier New, monospace', fontSize: 10, color: '#8A6F5A', letterSpacing: '0.08em', textTransform: 'uppercase', textDecoration: 'none' }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" focusable="false">
+                <rect x="2.5" y="2.5" width="19" height="19" rx="5" />
+                <circle cx="12" cy="12" r="4.2" />
+                <circle cx="17.7" cy="6.3" r="1.15" fill="currentColor" stroke="none" />
+              </svg>
+              @archiveyoursprints
+            </a>
+          </p>
           <p style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: '#8A6F5A', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
             support@archiveyours.com
           </p>
