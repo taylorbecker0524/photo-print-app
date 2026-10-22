@@ -22,6 +22,18 @@ import type { Filter, StampStyle, StampPos, StampFont, StampConfig, Crop } from 
 // so an old saved cart renders exactly as it would have before.
 type Photo = {width?:number;height?:number; id: string; file?: File; fileName: string; uploadedPaths?: Record<string,string>; url: string; sessionId: string; filter: Filter; stamp: StampConfig; size: string; crop?: Crop }
 type OrderItem = { id: string; photoId: string; url: string; fileName: string; filter: Filter; stamp: StampConfig; size: string; crop?: Crop; quantity: number }
+
+// The identity of a rendered print file. Two cart entries share a render only
+// when every input to the picture is the same: the photo, the filter, the
+// paper, the crop and the stamp. Quantity is deliberately absent — two copies
+// of one picture are one render.
+//
+// This lives at module scope because the background pre-render and the
+// checkout upload MUST agree on it. If they ever disagreed, a render made from
+// settings the customer has since changed could be the file that gets printed.
+const renderKeyOf = (i: { photoId: string; filter: Filter; size: string; crop?: Crop; stamp: StampConfig }) =>
+  `${i.photoId}|${i.filter}|${i.size}|${JSON.stringify(i.crop ?? DEFAULT_CROP)}|${JSON.stringify(i.stamp)}`
+
 type Session = { id: string; name: string; date: Date; photoIds: string[]; isRenaming: boolean }
 
 /** What we write to localStorage so the studio can rebuild itself. */
@@ -579,6 +591,20 @@ export default function StudioPage(){
   const [isMobile,setIsMobile]=useState(false)
   // FIX A1 (P0 launch blocker): upload state for the photo-upload-then-checkout flow
   const [uploadState,setUploadState]=useState<{active:boolean;current:number;total:number;error:string}>({active:false,current:0,total:0,error:''})
+  // Pre-render cache: renderKey -> the finished print JPEG.
+  //
+  // Checkout used to do every render and every upload after the button was
+  // pressed. On a phone that is about a second of frozen UI per photo plus the
+  // upload, all of it at the one moment a customer is most likely to give up —
+  // and none of it using the minutes they just spent editing. These hold the
+  // work done early instead.
+  const preRenderRef=useRef<Map<string,Blob>>(new Map())
+  const prepBusyRef=useRef(false)
+  // Keys whose background render or upload threw. Never retried in the
+  // background: checkout retries them in the foreground, where a failure can be
+  // reported to the customer rather than swallowed.
+  const prepFailedRef=useRef<Set<string>>(new Set())
+  const [prepState,setPrepState]=useState<{ready:number;total:number}>({ready:0,total:0})
   // FIX (Finish): order-level required print finish — lustre or gloss
   const [finish,setFinish]=useState<'lustre'|'gloss'|null>(null)
 
@@ -1088,6 +1114,111 @@ export default function StudioPage(){
 
   const updateOrderQty=(itemId:string,delta:number)=>setOrderItems(prev=>prev.map(i=>i.id===itemId?{...i,quantity:Math.max(0,i.quantity+delta)}:i).filter(i=>i.quantity>0))
   const photoInOrder=(photoId:string)=>orderItems.filter(i=>i.photoId===photoId).reduce((s,i)=>s+i.quantity,0)
+  // ─── Background pre-render ────────────────────────────────────────────────
+  //
+  // Everything checkout needs, prepared while the customer is still editing.
+  //
+  // Two phases, on purpose. Rendering always runs: it is the expensive, UI
+  // freezing part, and a render that is never ordered costs only CPU we had
+  // spare. Uploading waits until the cart could actually be checked out —
+  // enough prints and a finish chosen — because every pre-upload is a file in
+  // storage that an abandoned cart would leave behind.
+  //
+  // Nothing here reports errors to the customer. A background failure is left
+  // for goToCheckout to hit again in the foreground, where there is a banner to
+  // put it in and a retry the customer asked for.
+  const photosRef=useRef(photos)
+  useEffect(()=>{ photosRef.current=photos },[photos])
+
+  // Any change to a photo's filter, paper, crop or stamp changes this string
+  // and restarts preparation; changing a quantity does not, because it cannot
+  // change a single pixel of what gets printed.
+  const wantedSig=orderItems.map(renderKeyOf).join('~')
+  const readyToUpload=!!finish && totalQty>=MIN_ORDER_QTY
+
+  useEffect(()=>{
+    if(uploadState.active) return
+    const items=Array.from(new Map(orderItems.map(i=>[renderKeyOf(i),i])).entries())
+    if(!items.length){ setPrepState({ready:0,total:0}); return }
+
+    // Drop cached renders for settings the customer has moved on from, so the
+    // map cannot grow without bound across a long editing session.
+    for(const key of Array.from(preRenderRef.current.keys())){
+      if(!items.some(([k])=>k===key)) preRenderRef.current.delete(key)
+    }
+
+    const isReady=(key:string)=>{
+      const photo=photosRef.current.find(p=>p.id===items.find(([k])=>k===key)?.[1].photoId)
+      return !!photo?.uploadedPaths?.[key] || preRenderRef.current.has(key)
+    }
+    setPrepState({ready:items.filter(([k])=>isReady(k)).length,total:items.length})
+
+    let cancelled=false
+    // Wait for editing to settle before spending a frame on rendering, then
+    // take idle time rather than competing with the customer's own interaction.
+    const timer=setTimeout(()=>{ void drain() },1200)
+
+    const yieldToUser=()=>new Promise<void>(resolve=>{
+      const ric=(window as any).requestIdleCallback
+      if(typeof ric==='function') ric(()=>resolve(),{timeout:1500})
+      else setTimeout(()=>resolve(),60)
+    })
+
+    async function drain(){
+      if(prepBusyRef.current||cancelled) return
+      prepBusyRef.current=true
+      try{
+        for(const [key,item] of items){
+          if(cancelled) break
+          if(prepFailedRef.current.has(key)) continue
+          const photo=photosRef.current.find(p=>p.id===item.photoId)
+          // No file means it was restored from a previous visit and only a
+          // preview survives. The tile is already flagged for re-adding.
+          if(!photo?.file) continue
+          if(photo.uploadedPaths?.[key]) continue
+
+          try{
+            if(!preRenderRef.current.has(key)){
+              await yieldToUser()
+              if(cancelled) break
+              const rendered=await renderForPrint(photo.file,item.filter,item.stamp,item.size,item.crop)
+              if(cancelled) break
+              preRenderRef.current.set(key,rendered.blob)
+              setPrepState(s=>({...s,ready:Math.min(s.total,s.ready+(readyToUpload?0:1))}))
+            }
+            if(readyToUpload){
+              const blob=preRenderRef.current.get(key)
+              if(blob){
+                const {uploadCompressed}=await import('@/lib/compress')
+                const path=await uploadCompressed(blob,photo.fileName)
+                if(cancelled) break
+                // Recording the path here is what makes checkout instant: its
+                // existing cache check finds it and skips straight past.
+                setPhotos(prev=>prev.map(p=>p.id===photo.id
+                  ? {...p, uploadedPaths:{...(p.uploadedPaths ?? {}), [key]:path}}
+                  : p))
+                preRenderRef.current.delete(key)
+                setPrepState(s=>({...s,ready:Math.min(s.total,s.ready+1)}))
+              }
+            }
+          }catch(err){
+            // Remember the failure so the loop does not sit on one bad photo,
+            // and leave it to checkout to surface properly.
+            prepFailedRef.current.add(key)
+            console.warn('[studio] background preparation failed for a photo',err)
+          }
+        }
+      } finally {
+        prepBusyRef.current=false
+      }
+    }
+
+    return ()=>{ cancelled=true; clearTimeout(timer) }
+    // photos is deliberately absent: it is read through photosRef so that
+    // recording an upload path does not restart the very loop that recorded it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[wantedSig,readyToUpload,uploadState.active])
+
   // FIX A1 (P0 launch blocker): compress + upload each unique photo to Supabase,
   // then write the real storage paths into the cart before navigating to checkout.
   // Without this, photoPath was a placeholder string and Prodigi got `url: undefined`.
@@ -1110,10 +1241,8 @@ export default function StudioPage(){
     // Size and crop belong in the key now that the render produces a file cut to
     // the exact shape of the paper: the same photo at 4x6 and at 4x4 is two
     // different pictures, and leaving them out would print one of them twice.
-    const renderKey = (i: OrderItem) =>
-      `${i.photoId}|${i.filter}|${i.size}|${JSON.stringify(i.crop??DEFAULT_CROP)}|${JSON.stringify(i.stamp)}`
     const uniqueRenders = Array.from(
-      new Map(orderItems.map(i=>[renderKey(i), i])).entries()
+      new Map(orderItems.map(i=>[renderKeyOf(i), i])).entries()
     )
     setUploadState({active:true,current:0,total:uniqueRenders.length,error:''})
 
@@ -1151,8 +1280,19 @@ export default function StudioPage(){
         // filter existed only in the preview and never reached the printer.
         // Rendering here means the file Prodigi receives is the picture the
         // customer was looking at.
-        const rendered = await renderForPrint(photo.file, item.filter, item.stamp, item.size, item.crop)
-        const path = await uploadCompressed(rendered.blob, photo.fileName)
+        // Usually already done. The background pass renders every cart item
+        // while the customer edits and, once the cart is checkout-eligible,
+        // uploads it too — in which case the cached-path branch above returned
+        // long before here. Reaching this line means one of the few cases it
+        // could not cover: a photo added moments ago, or one whose background
+        // attempt failed and was deliberately left for this loop to retry where
+        // the error can actually be shown.
+        const prepared = preRenderRef.current.get(key)
+        const blob = prepared
+          ? prepared
+          : (await renderForPrint(photo.file, item.filter, item.stamp, item.size, item.crop)).blob
+        const path = await uploadCompressed(blob, photo.fileName)
+        preRenderRef.current.delete(key)
         pathMap[key] = path
         // Remember it, so a return trip to the studio does not re-upload.
         setPhotos(prev=>prev.map(p=>p.id===photo.id
@@ -1172,7 +1312,7 @@ export default function StudioPage(){
       stamp:i.stamp,
       filter:i.filter,
       fileName:i.fileName,
-      photoPath: pathMap[renderKey(i)],
+      photoPath: pathMap[renderKeyOf(i)],
     }))
     // FIX (Cart persistence): localStorage with 7-day TTL so abandoned carts survive
     const {setWithTTL} = await import('@/lib/storage')
@@ -1807,6 +1947,15 @@ export default function StudioPage(){
                     {softCount>0&&(
                       <p style={{ fontSize: 11, color: "#E8A33D", margin: "4px 0 0", lineHeight: 1.45 }}>
                         {softCount===1?"1 photo may look soft":softCount+" photos may look soft"} at the size chosen. They will still print, but a smaller size will be sharper.
+                      </p>
+                    )}
+                    {/* Quiet by design: this is work the customer never asked
+                        for and does not have to wait on. It is here so that a
+                        slow connection looks like progress rather than nothing,
+                        and it disappears the moment everything is ready. */}
+                    {prepState.total>0&&prepState.ready<prepState.total&&(
+                      <p style={{fontFamily:'Courier New, monospace',fontSize:10,color:'rgba(247,243,238,0.4)',letterSpacing:'0.06em',textTransform:'uppercase',margin:'6px 0 0'}}>
+                        Preparing prints - {prepState.ready} of {prepState.total} ready
                       </p>
                     )}
                   </>
