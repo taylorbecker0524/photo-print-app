@@ -233,7 +233,17 @@ export async function POST(req: NextRequest) {
         id: orderId,
         email,
         status: 'paid',
-        stripe_payment_intent_id: null,
+        // Stripe refuses a zero-amount PaymentIntent, so there is no intent id
+        // to record here — but this column is NOT NULL and UNIQUE in the live
+        // schema, and a null fails the insert outright with error 23502, which
+        // the customer sees as a bare "Checkout failed". A per-order sentinel
+        // satisfies both constraints: unique by construction, and never equal
+        // to a real Stripe id. The webhook is the only thing that looks this
+        // column up and it searches by the id Stripe gives it, so one of these
+        // can never be matched — which is correct, because there is no payment
+        // to confirm. The `free_` prefix keeps the reason legible in the
+        // bookkeeping export, which prints this column verbatim.
+        stripe_payment_intent_id: `free_${orderId}`,
         total_cents: 0,
         tax_cents: 0,
         tax_calculation_id: null,
