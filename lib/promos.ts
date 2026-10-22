@@ -67,26 +67,119 @@ export type Promo = {
  */
 export const ALERT_AT_FRACTION = 0.5
 
-export const PROMOS: Promo[] = [
-  // Template for an influencer gift. Copy this block per creator, change the
-  // code, issuedTo and expiresAt, and deploy. Cost to us: about $13.93 for 25
-  // prints and a parcel.
-  {
-    code: 'ARCHIVE-GIFT',
+/**
+ * Per-creator gift codes.
+ *
+ * One code per person, one redemption each — which is the point. A single
+ * shared code with a ceiling would save a deploy and cost you everything that
+ * matters: you could not tell who redeemed, could not revoke one creator
+ * without revoking all of them, and would be one screenshot away from
+ * strangers taking free prints.
+ *
+ * Adding a creator is one line here. `handle` becomes the code as
+ * `ARCHIVE-<HANDLE>`, so keep it short, memorable and easy to read aloud.
+ * Everything else comes from GIFT_TERMS below unless you override it.
+ */
+export type CreatorGift = {
+  /** Code suffix. 'SARAHJ' becomes ARCHIVE-SARAHJ. Letters, digits and dashes. */
+  handle: string
+  /** Who it went to, for your own records. Never shown to customers. */
+  issuedTo: string
+  /** ISO date the code stops working. */
+  expiresAt: string
+  /** Set false to revoke this one creator without touching the others. */
+  active?: boolean
+  /** Override the standard offer for one creator if you ever need to. */
+  freeQty?: number
+  freeSize?: string
+  freeShipping?: boolean
+}
+
+/** The standard influencer offer. Change it here and every gift code follows. */
+const GIFT_TERMS = {
+  freeQty: 25,
+  freeSize: '4x6',
+  freeShipping: true,
+} as const
+
+export const CREATOR_GIFTS: CreatorGift[] = [
+  // The original template code. Already redeemed on a test order, so it is
+  // spent unless that order row is deleted or set back to 'pending'.
+  { handle: 'GIFT', issuedTo: 'sample gift code — replace per creator', expiresAt: '2026-11-21' },
+
+  // Add creators below, one line each:
+  // { handle: 'SARAHJ', issuedTo: '@sarahjphoto (12k, Tampa)', expiresAt: '2026-12-31' },
+]
+
+function giftToPromo(g: CreatorGift): Promo {
+  const freeQty = g.freeQty ?? GIFT_TERMS.freeQty
+  const freeSize = g.freeSize ?? GIFT_TERMS.freeSize
+  const freeShipping = g.freeShipping ?? GIFT_TERMS.freeShipping
+  return {
+    code: `ARCHIVE-${normalizeCode(g.handle)}`,
     kind: 'gift',
-    issuedTo: 'sample gift code — replace per creator',
-    label: '25 free prints + free shipping',
-    freeQty: 25,
-    freeSize: '4x6',
-    freeShipping: true,
-    // A creator may well already have ordered from us; gifting them anyway is
-    // the point, so this does not apply to gift codes.
+    issuedTo: g.issuedTo,
+    label: `${freeQty} free prints${freeShipping ? ' + free shipping' : ''}`,
+    freeQty,
+    freeSize,
+    freeShipping,
+    // A creator may well have ordered from us already; gifting them anyway is
+    // the whole point, so this never applies to gift codes.
     newCustomersOnly: false,
+    // One person, once. This is what makes a gift code a gift code.
     maxRedemptions: 1,
-    expiresAt: '2026-11-21',
+    expiresAt: g.expiresAt,
+    active: g.active ?? true,
+  }
+}
+
+/**
+ * Codes that are not per-creator gifts.
+ *
+ * An 'audience' code is shared, so maxRedemptions is doing real work here: it
+ * is the only thing standing between you and an open tab if the code escapes.
+ */
+const STANDALONE_PROMOS: Promo[] = [
+  {
+    // A disposable code for testing checkout end to end.
+    //
+    // Deliberately small and deliberately NOT free shipping, for two reasons.
+    // An order using it still has a real balance left, so it exercises the
+    // Stripe payment path — which a fully free order skips entirely, since
+    // Stripe refuses a zero-amount intent. And if it ever leaked, the worst
+    // case is ten people getting two 4x6 prints each, about $5 in total.
+    code: 'ARCHIVE-TEST',
+    kind: 'audience',
+    issuedTo: 'internal testing',
+    label: '2 free prints (test code)',
+    freeQty: 2,
+    freeSize: '4x6',
+    freeShipping: false,
+    newCustomersOnly: false,
+    maxRedemptions: 10,
+    expiresAt: '2026-12-31',
     active: true,
   },
 ]
+
+export const PROMOS: Promo[] = [
+  ...CREATOR_GIFTS.map(giftToPromo),
+  ...STANDALONE_PROMOS,
+]
+
+// A duplicated code would mean findPromo silently picks the first match and the
+// second creator's code quietly shares the first one's redemption count. Cheap
+// to check once at module load; impossible to debug from a support email.
+const seenCodes = new Set<string>()
+for (const p of PROMOS) {
+  const key = normalizeCode(p.code)
+  if (seenCodes.has(key)) {
+    throw new Error(
+      `Duplicate promo code "${key}" in lib/promos.ts — codes must be unique.`
+    )
+  }
+  seenCodes.add(key)
+}
 
 export type PromoRejection =
   | 'unknown'

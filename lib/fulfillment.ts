@@ -105,7 +105,7 @@ export async function fulfillPaidOrder({
 
   // Send the customer's receipt as soon as payment is confirmed — independent of
   // fulfillment. A Prodigi failure must NOT prevent the confirmation email, and
-  // an email failure must NOT flip the order to fulfillment_failed. Each concern
+  // an email failure must NOT record a fulfillment failure. Each concern
   // gets its own try/catch (fulfillment is handled below).
   try {
     const itemsSubtotal = Array.isArray(order.items)
@@ -207,13 +207,31 @@ export async function fulfillPaidOrder({
     const errorMessage = err?.message ?? 'Unknown Prodigi/fulfillment error'
     console.error('[fulfillment] failed for order', order.id, err)
 
-    await supabase
+    // Record the failure, deliberately WITHOUT touching status.
+    //
+    // This used to also set status: 'fulfillment_failed', which is not one of
+    // the values orders_status_check allows. Postgres therefore rejected the
+    // whole statement — so fulfillment_error was never written either, and the
+    // order kept the "attempt started and did not complete" breadcrumb from
+    // above. That breadcrumb says the opposite of what happened: the attempt
+    // did complete, it failed, and we had the reason in hand and threw it away.
+    //
+    // Leaving status at 'paid' is both true and useful. The retry guard at the
+    // top of this function looks for exactly that: an order sitting at 'paid'
+    // with no prodigi_order_id is one whose fulfillment never finished and must
+    // be retried. Widening the constraint instead would have been worse — the
+    // customer's own order page renders any status it has no label for
+    // verbatim, so they would have been shown "fulfillment_failed".
+    const { error: recordError } = await supabase
       .from('orders')
-      .update({
-        status: 'fulfillment_failed',
-        fulfillment_error: errorMessage.slice(0, 2000),
-      })
+      .update({ fulfillment_error: errorMessage.slice(0, 2000) })
       .eq('id', order.id)
+    if (recordError) {
+      // The alert below is now the only record of this, so say so loudly.
+      console.error(
+        '[fulfillment] could not record the failure on order', order.id, recordError
+      )
+    }
 
     sendAdminAlert({
       subject: `[archive] Fulfillment failed for order ${order.id}`,
