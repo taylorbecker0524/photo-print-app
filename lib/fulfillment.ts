@@ -132,6 +132,44 @@ export async function fulfillPaidOrder({
     console.error('[fulfillment] confirmation email failed for order', order.id, emailErr)
   }
 
+  // Tell the owner a sale happened.
+  //
+  // Everything else here is for the customer or for failures; until now a
+  // successful order produced no notification at all, so the first you knew of
+  // one was a Stripe receipt or a Prodigi dispatch mail — somebody else's
+  // system telling you about your own business.
+  //
+  // Sent at payment confirmation rather than after Prodigi, so it arrives even
+  // when fulfillment later fails (which raises its own, louder alert).
+  // Its own try/catch: a missing notification must never cost a print.
+  try {
+    const addr = order.shipping_address ?? {}
+    const lines = (Array.isArray(order.items) ? order.items : [])
+      .map((i: any) => `  ${i.quantity} x ${i.size}${i.finish ? ` (${i.finish})` : ''}`)
+      .join('\n')
+    const prints = (Array.isArray(order.items) ? order.items : [])
+      .reduce((n: number, i: any) => n + (Number(i.quantity) || 0), 0)
+    await sendAdminAlert({
+      subject: `[archive] New order - ${prints} print${prints === 1 ? '' : 's'}, $${(Number(order.total_cents) / 100).toFixed(2)}`,
+      body: [
+        `Order ${order.id}`,
+        `Customer: ${order.email}`,
+        `Total: $${(Number(order.total_cents) / 100).toFixed(2)}` +
+          (Number(order.tax_cents) ? ` (incl. $${(Number(order.tax_cents) / 100).toFixed(2)} tax)` : ''),
+        order.promo_code ? `Promo code: ${order.promo_code}` : null,
+        '',
+        'Items:',
+        lines || '  (none listed)',
+        '',
+        `Ship to: ${addr.name ?? '?'}, ${addr.city ?? '?'}, ${addr.state ?? '?'} ${addr.zip ?? ''}`.trim(),
+        '',
+        `Track it: https://www.archiveyours.com/orders/${order.id}`,
+      ].filter(l => l !== null).join('\n'),
+    })
+  } catch (alertErr) {
+    console.error('[fulfillment] new-order alert failed for order', order.id, alertErr)
+  }
+
   try {
     const prodigiItems = await Promise.all(
       order.items.map(async (item: any, idx: number) => {
