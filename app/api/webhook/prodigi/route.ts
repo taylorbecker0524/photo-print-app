@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { trackingUrlFor } from '@/lib/tracking'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -94,7 +95,9 @@ export async function POST(req: NextRequest) {
         email: ourOrder.email,
         orderId: ourOrder.id,
         trackingNumber: trackingNumber ?? '',
-        trackingUrl: trackingUrl ?? '',
+        // The email is the link most customers actually click, so it gets the
+        // corrected URL rather than the AfterShip one Prodigi supplied.
+        trackingUrl: trackingUrlFor(trackingNumber, trackingUrl) ?? '',
       })
     } catch (e) {
       console.error('[webhook/prodigi] shipping email failed for order', ourOrder.id, e)
