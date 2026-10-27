@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { trackingUrlFor } from '@/lib/tracking'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -96,7 +97,7 @@ export async function GET(req: NextRequest) {
         status: o.status,
         totalCents: o.total_cents,
         createdAt: o.created_at,
-        trackingUrl: o.tracking_url,
+        trackingUrl: trackingUrlFor(o.tracking_number, o.tracking_url),
         itemCount: items.reduce((s: number, i: any) => s + (i.quantity ?? 0), 0),
         itemSummary,
         thumbnailUrl,
