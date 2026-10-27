@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { trackingUrlFor } from '@/lib/tracking'
 
 export const dynamic = 'force-dynamic'
 // Belt and braces alongside the no-store fetch in lib/supabase: this is the
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({
       id: order.id, status: order.status,
       trackingNumber: order.tracking_number,
-      trackingUrl: order.tracking_url,
+      trackingUrl: trackingUrlFor(order.tracking_number, order.tracking_url),
       totalCents: order.total_cents,
       items: safeItems,
       createdAt: order.created_at,
