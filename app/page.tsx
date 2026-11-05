@@ -23,7 +23,7 @@ const STORY = [
  * reading.
  */
 const STORY_NOTE = [
-  '"we started printing her photos with the date and place stamped on each one.',
+  '"we started printing her photos with the date stamped on each one.',
   'we can\'t freeze time. but we can preserve it."',
 ]
 
@@ -418,7 +418,7 @@ export default function HomePage() {
             ref={stripRef}
             className="ay-strip"
             role="group"
-            aria-label="Prints with the date and place stamped on them"
+            aria-label="Prints with the date stamped on them"
             style={{ display: 'flex', overflowX: 'auto', paddingTop: 6, paddingBottom: 6 }}
           >
             {[...PHOTOS, ...PHOTOS].map((p, i) => (
