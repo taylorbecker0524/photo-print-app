@@ -117,15 +117,21 @@ export function croppedPixels(
 }
 
 export type StampConfig = {
-  showDate: boolean; showTime: boolean; showLocation: boolean
-  locationText: string; customText: string; style: StampStyle
+  showDate: boolean; showTime: boolean
+  customText: string; style: StampStyle
   position: StampPos; capturedAt: string | null
   /** Bulk date override. Kept separate so the original EXIF date survives it. */
   capturedAtOverride: string | null
-  hasExifDate: boolean; hasExifLocation: boolean
+  hasExifDate: boolean
   dateFormat: 'modern' | 'classic'
   stampFont: StampFont
 }
+
+// Location used to be stamped under the date, taken from the photo's GPS data.
+// It was dropped: phones strip location far more often than they strip the
+// date, so it was missing on most uploads, and a stamp that appears on some
+// prints and not others reads as a fault rather than a feature. Old orders
+// still carry locationText in their saved stamp JSON; nothing reads it now.
 
 export const FILTERS: { key: Filter; label: string; css: string }[] = [
   { key: 'original', label: 'Original', css: 'none' },
@@ -169,7 +175,6 @@ export function buildStampLines(stamp: StampConfig): string[] {
   } else if (stamp.showTime && cap) {
     lines.push(fmtTime(cap))
   }
-  if (stamp.showLocation && stamp.locationText) lines.push(stamp.locationText)
   if (stamp.customText) lines.push(stamp.customText)
   return lines
 }
@@ -310,7 +315,7 @@ function drawDateBack(
   const gap = digitH * 0.34
 
   // Courier New ships with every browser and every OS. Nothing to download,
-  // so nothing can arrive too late and put the location on paper in the wrong
+  // so nothing can arrive too late and put a caption on paper in the wrong
   // face — the failure that made the date itself worth redrawing.
   const textFont = `bold ${Math.round(textFs)}px "Courier New", monospace`
 
@@ -331,18 +336,18 @@ function drawDateBack(
   // Every line starts at the same left edge, including on a right-hand stamp.
   //
   // They used to be right-aligned to each other, which looked tidy in isolation
-  // and wrong on a photo: a location longer than the date pushed its own first
+  // and wrong on a photo: a caption longer than the date pushed its own first
   // letter out to the left of the first digit, so the block hung off the date
-  // instead of sitting under it. Sharing a left edge means the place name
-  // starts under the first digit and runs past the last one, which is how a
-  // caption reads.
+  // instead of sitting under it. Sharing a left edge means the caption starts
+  // under the first digit and runs past the last one, which is how a caption
+  // reads.
   //
   // The DATE is what gets positioned — its right edge lands on the inset, the
-  // same place it sat before this change — and the location is laid out from
-  // the date's left edge, free to overhang on the right.
+  // same place it sat before this change — and any second line is laid out
+  // from the date's left edge, free to overhang on the right.
   const dateRow = rows.find(r => r.seg) ?? rows[0]
-  // A long enough location or custom line could otherwise push the block off
-  // the sheet, so nothing is ever allowed nearer than `edge` to any side.
+  // A long enough custom line could otherwise push the block off the sheet,
+  // so nothing is ever allowed nearer than `edge` to any side.
   const edge = base * 0.03
   let bx = right ? cw - padX - dateRow.w : padX
   // Only the overhang can run out of room, so pull the whole block back by
@@ -427,7 +432,7 @@ function segAdvance(ch: string, w: number): number {
  * Every glyph occupies a full-width cell, but the bars that light up do not
  * fill it. A leading "1" lights only the two right-hand bars, so its ink
  * begins almost a whole digit-width in from where the cell starts — which is
- * why a location set at the same x as the date looked shifted left under it.
+ * why a caption set at the same x as the date looked shifted left under it.
  * Aligning the cells is not the same as aligning what you can see.
  */
 export function segFirstInkOffset(text: string, digitH: number): number {
