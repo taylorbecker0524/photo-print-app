@@ -76,12 +76,12 @@ export const ALERT_AT_FRACTION = 0.5
  * without revoking all of them, and would be one screenshot away from
  * strangers taking free prints.
  *
- * Adding a creator is one line here. `handle` becomes the code as
- * `ARCHIVE-<HANDLE>`, so keep it short, memorable and easy to read aloud.
+ * Adding a creator is one line here: put their real Instagram handle in
+ * `handle` and the code is derived from it by codeStemFor() below.
  * Everything else comes from GIFT_TERMS below unless you override it.
  */
 export type CreatorGift = {
-  /** Code suffix. 'SARAHJ' becomes ARCHIVE-SARAHJ. Letters, digits and dashes. */
+  /** The creator's real Instagram handle, exactly as they spell it. */
   handle: string
   /** Who it went to, for your own records. Never shown to customers. */
   issuedTo: string
@@ -102,13 +102,59 @@ const GIFT_TERMS = {
   freeShipping: true,
 } as const
 
-export const CREATOR_GIFTS: CreatorGift[] = [
-  // The original template code. Already redeemed on a test order, so it is
-  // spent unless that order row is deleted or set back to 'pending'.
-  { handle: 'GIFT', issuedTo: 'sample gift code — replace per creator', expiresAt: '2026-11-21' },
+/**
+ * Turn an Instagram handle into the suffix of its code.
+ *
+ * Uppercase, drop anything that is not a letter or digit, and cut to twelve
+ * characters. The rule is not arbitrary: the codes in the outreach sheet were
+ * generated this way before this module existed, and those are the strings
+ * that go out in the DMs. If this function and that column ever disagree, a
+ * creator types the code off the message and the site tells her it is not a
+ * code — so the rule lives here, in one place, rather than being retyped per
+ * line and quietly drifting.
+ *
+ * Twelve characters is also why a long handle loses its tail:
+ * melissawoodtepperberg becomes MELISSAWOODT. Collisions between two shortened
+ * handles are caught at module load by the duplicate check at the bottom of
+ * this file, which throws rather than letting two creators share one code.
+ */
+export function codeStemFor(handle: string): string {
+  return handle.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12)
+}
 
-  // Add creators below, one line each:
-  // { handle: 'SARAHJ', issuedTo: '@sarahjphoto (12k, Tampa)', expiresAt: '2026-12-31' },
+/**
+ * How long a gift code lives.
+ *
+ * Long enough that a creator who is busy for a month has not missed it, short
+ * enough that an unredeemed code does not sit open for ever. Change this one
+ * line and every code below follows.
+ */
+const GIFT_EXPIRES = '2027-02-28'
+
+export const CREATOR_GIFTS: CreatorGift[] = [
+  // Campaign 1 — the fifteen ticked in the outreach sheet. Follower counts are
+  // noted so a redemption can be read against the size of the account it came
+  // from. One line per creator; remove a line or set active:false to revoke.
+  { handle: 'devwindsor',            issuedTo: '@devwindsor — devon windsor (5M)',                 expiresAt: GIFT_EXPIRES },
+  { handle: 'alexandracooper',       issuedTo: '@alexandracooper — Alex Cooper (8M)',              expiresAt: GIFT_EXPIRES },
+  { handle: 'bridget',               issuedTo: '@bridget (2M)',                                    expiresAt: GIFT_EXPIRES },
+  { handle: 'melissawoodtepperberg', issuedTo: '@melissawoodtepperberg — Melissa Wood-Tepperberg (1M)', expiresAt: GIFT_EXPIRES },
+  { handle: 'madisonlecroy',         issuedTo: '@madisonlecroy — Madison LeCroy (1M)',             expiresAt: GIFT_EXPIRES },
+  { handle: 'hayderz',               issuedTo: '@hayderz — Hayden Cohen (628K)',                   expiresAt: GIFT_EXPIRES },
+  { handle: 'probablyshannon',       issuedTo: '@probablyshannon — Shannon Ford Middleton (499K)', expiresAt: GIFT_EXPIRES },
+  { handle: 'katieaustin',           issuedTo: '@katieaustin — Katie Austin (482K)',               expiresAt: GIFT_EXPIRES },
+  { handle: 'vivianeaudi',           issuedTo: '@vivianeaudi — Viviane Audi (471K)',               expiresAt: GIFT_EXPIRES },
+  { handle: 'gracie_norton',         issuedTo: '@gracie_norton — Gracie Norton (399K)',            expiresAt: GIFT_EXPIRES },
+  { handle: 'shutthekaleup',         issuedTo: '@shutthekaleup — Jeannette Aranda (367K)',         expiresAt: GIFT_EXPIRES },
+  { handle: 'itsdanimarenburg',      issuedTo: '@itsdanimarenburg — Dani Marenburg (200K)',        expiresAt: GIFT_EXPIRES },
+  { handle: 'wellllaaa',             issuedTo: '@wellllaaa — Manuela Alvarez Hernandez (88K)',     expiresAt: GIFT_EXPIRES },
+  { handle: 'alikittykatz',          issuedTo: '@alikittykatz — Ali Katz (70K)',                   expiresAt: GIFT_EXPIRES },
+  { handle: 'its_allyjoy',           issuedTo: '@its_allyjoy — Ally Joy General (57K)',            expiresAt: GIFT_EXPIRES },
+
+  // The original ARCHIVE-GIFT placeholder used to sit here. It was spent on the
+  // test order and is gone now, so a stranger guessing the obvious word gets
+  // nothing. That order keeps its own promo_code string in the database; this
+  // list is only consulted when a code is being redeemed, never to read one back.
 ]
 
 function giftToPromo(g: CreatorGift): Promo {
@@ -116,7 +162,7 @@ function giftToPromo(g: CreatorGift): Promo {
   const freeSize = g.freeSize ?? GIFT_TERMS.freeSize
   const freeShipping = g.freeShipping ?? GIFT_TERMS.freeShipping
   return {
-    code: `ARCHIVE-${normalizeCode(g.handle)}`,
+    code: `ARCHIVE-${codeStemFor(g.handle)}`,
     kind: 'gift',
     issuedTo: g.issuedTo,
     label: `${freeQty} free prints${freeShipping ? ' + free shipping' : ''}`,
