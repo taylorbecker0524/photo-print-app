@@ -8,7 +8,7 @@ const STUDIO_SNAPSHOT_KEY = 'archive-studio'
 
 const STORY = [
   '"nearing our daughter\'s first birthday, we wanted to archive all of our favorite moments — each beach trip, every holiday, her first steps, every ordinary tuesday that somehow felt extraordinary.',
-  'we started printing her photos and stamping each one with the date and location it was taken. so that someday, when she holds a print in her hands, she can be taken right back to that moment.',
+  'we started printing her photos and stamping each one with the date it was taken. so that someday, when she holds a print in her hands, she can be taken right back to that moment.',
   'we can\'t freeze time. but we can preserve it.',
   'that\'s why archive exists."'
 ]
@@ -43,7 +43,7 @@ const STORY_NOTE = [
  *
  * All six are 684x912 — exactly 3:4, which every card below matches, so
  * object-fit has nothing to crop and cannot clip a stamp off an edge.
- * To change a date or a location, re-render the source photo through
+ * To change a date, re-render the source photo through
  * drawStamp rather than drawing over it here.
  */
 const PHOTOS = [
@@ -276,7 +276,7 @@ export default function HomePage() {
       <div style={{ background: '#EFE8DF', borderBottom: '1px solid rgba(43,42,40,0.08)', padding: '10px 0', width: '100%', display: 'flex', alignItems: 'center' }}>
         {[
           { n: '1', title: 'Upload', sub: 'photos' },
-          { n: '2', title: 'Stamp', sub: 'date + location' },
+          { n: '2', title: 'Stamp', sub: 'the date' },
           { n: '3', title: 'Print', sub: 'any size' },
           { n: '4', title: 'Ship', sub: 'to your door' },
         ].map((step, i) => (
@@ -306,7 +306,7 @@ export default function HomePage() {
           Every photo tells a story.<br /><em style={{ color: '#8A6F5A' }}>Archive yours.</em>
         </h1>
         <p style={{ fontFamily: 'Georgia, serif', fontSize: isMobile ? 15 : 17, color: '#8A6F5A', lineHeight: 1.5, margin: '0 auto 26px', maxWidth: 440 }}>
-          The date and location stamped on every print — just like old
+          The date stamped on every print — just like old
           disposable cameras.
         </p>
         {/* The studio keeps an unfinished order for seven days, but the only way

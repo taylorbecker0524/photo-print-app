@@ -20,23 +20,23 @@ export const metadata: Metadata = {
   // Deliberately a plain string rather than a title template: every sub-page
   // already spells out "— Archive Yours" itself, and a template would have
   // stamped the brand on twice.
-  title: 'Archive Yours — Date & Location Stamp Photo Prints',
-  description: 'Archive Yours prints your photos with the exact date and location stamped on them — just like old disposable cameras. Upload from your phone and we ship them to your door.',
+  title: 'Archive Yours — Date Stamp Photo Prints',
+  description: 'Archive Yours prints your photos with the exact date stamped on them — just like old disposable cameras. Upload from your phone and we ship them to your door.',
   applicationName: 'Archive Yours',
-  keywords: 'Archive Yours, archiveyours, timestamp photos, location stamp photos, date stamp prints, disposable camera prints, photo printing, stamped photo prints',
+  keywords: 'Archive Yours, archiveyours, timestamp photos, date stamp prints, dated photo prints, disposable camera prints, photo printing, stamped photo prints',
   alternates: { canonical: '/' },
   openGraph: {
     type: 'website',
-    title: 'Archive Yours — Date & Location Stamp Photo Prints',
-    description: 'Photos printed with the exact date and location stamped on them, just like old disposable cameras.',
+    title: 'Archive Yours — Date Stamp Photo Prints',
+    description: 'Photos printed with the exact date stamped on them, just like old disposable cameras.',
     url: SITE_URL,
     siteName: 'Archive Yours',
     images: [{ url: '/og.jpg', width: 1200, height: 630, alt: 'Archive Yours photo prints' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Archive Yours — Date & Location Stamp Photo Prints',
-    description: 'Photos printed with the exact date and location stamped on them.',
+    title: 'Archive Yours — Date Stamp Photo Prints',
+    description: 'Photos printed with the exact date stamped on them.',
     images: ['/og.jpg'],
   },
 }
@@ -61,7 +61,7 @@ const STRUCTURED_DATA = {
       url: SITE_URL,
       logo: `${SITE_URL}/og.jpg`,
       email: 'support@archiveyours.com',
-      description: 'Photo printing with the date and location stamped on every print.',
+      description: 'Photo printing with the date stamped on every print.',
       // sameAs is how Google ties the site and the social account together into
       // one entity rather than two unrelated things that happen to share a
       // name. It is also a corroborating signal for a domain this young, which
