@@ -210,11 +210,14 @@ function itemResolutionNote(item:OrderItem,all:Photo[]):string|null{
 }
 
 
-async function readExif(file: File): Promise<{ date: string | null; lat: number | null; lon: number | null }> {
+// GPS is deliberately NOT requested any more. The stamp no longer prints a
+// location, so reading the customer's coordinates would be collecting something
+// we have no use for — and the parse is cheaper without it.
+async function readExif(file: File): Promise<{ date: string | null }> {
   try {
     const exifr = (await import('exifr')).default
-    const result = await exifr.parse(file, { gps: true, tiff: true, exif: true })
-    if (!result) return { date: null, lat: null, lon: null }
+    const result = await exifr.parse(file, { gps: false, tiff: true, exif: true })
+    if (!result) return { date: null }
     let date: string | null = null
     const raw = result.DateTimeOriginal || result.DateTime || result.CreateDate
     if (raw) {
@@ -228,45 +231,16 @@ async function readExif(file: File): Promise<{ date: string | null; lat: number 
         }
       } catch {}
     }
-    const lat = result.latitude ?? result.GPSLatitude ?? null
-    const lon = result.longitude ?? result.GPSLongitude ?? null
-    return { date, lat, lon }
+    return { date }
   } catch {
-    return { date: null, lat: null, lon: null }
+    return { date: null }
   }
 }
 
-// Reverse-geocode via our own /api/geocode proxy (server-side), which sets the
-// User-Agent Nominatim requires and caches results to stay under the rate limit.
-// Calling Nominatim directly from the browser violates their usage policy and
-// breaks on bulk uploads.
-// Photos from one outing share a location, so a 16-photo import used to fire
-// 16 near-identical lookups and wait on every one. Round to ~100m and reuse the
-// answer: a batch from a single place now costs one request instead of sixteen.
-const geocodeCache=new Map<string,Promise<string>>()
-
-async function reverseGeocode(lat: number, lon: number): Promise<string> {
-  const key=`${lat.toFixed(3)},${lon.toFixed(3)}`
-  const hit=geocodeCache.get(key)
-  if(hit) return hit
-  const req=(async()=>{
-    try {
-      const r=await fetch(`/api/geocode?lat=${lat}&lon=${lon}`)
-      if(!r.ok) return ''
-      const d=await r.json()
-      return d.location ?? ''
-    } catch { return '' }
-  })()
-  geocodeCache.set(key,req)
-  // A failed lookup should not be cached forever — the next photo may succeed.
-  req.then(v=>{ if(!v) geocodeCache.delete(key) }).catch(()=>geocodeCache.delete(key))
-  return req
-}
-
 const DEFAULT_STAMP: StampConfig = {
-  showDate:false,showTime:false,showLocation:false,locationText:'',customText:'',
+  showDate:false,showTime:false,customText:'',
   style:'burn',position:'bl',capturedAt:null,capturedAtOverride:null,
-  hasExifDate:false,hasExifLocation:false,
+  hasExifDate:false,
   dateFormat:'classic',stampFont:'classic'
 }
 
@@ -293,7 +267,6 @@ function StampBullets({stamp,filter}:{stamp:StampConfig;filter:Filter}){
   const cap = effectiveCapturedAt(stamp)
   if(stamp.showDate&&cap) items.push(fmtDate(cap,stamp.dateFormat??'classic'))
   if(stamp.showTime&&cap) items.push(fmtTime(cap))
-  if(stamp.showLocation&&stamp.locationText) items.push(stamp.locationText)
   if(stamp.customText) items.push(stamp.customText)
   if(stamp.style!=='none'){
     items.push(`${stamp.style==='burn'?'Classic burn':'Overlay'} - ${stamp.position==='bl'?'bottom left':stamp.position==='br'?'bottom right':stamp.position==='tl'?'top left':'top right'}`)
@@ -585,7 +558,6 @@ export default function StudioPage(){
   // FIX 12: controlled bulk override values — these are the source of truth
   // for bulk text fields. When the selection changes, we re-apply current
   // overrides to any newly-added selected photo via a sync effect.
-  const [bulkLocationText,setBulkLocationText]=useState('')
   const [bulkCustomText,setBulkCustomText]=useState('')
   const [bulkDateOverride,setBulkDateOverride]=useState('')  // FIX 13: 'YYYY-MM-DD' or '' for no override
   const [isMobile,setIsMobile]=useState(false)
@@ -765,7 +737,6 @@ export default function StudioPage(){
   const bulkSharedSize = sharedValue(selectedPhotos, p=>p.size)
   const bulkSharedShowDate = sharedValue(selectedPhotos, p=>p.stamp.showDate)
   const bulkSharedShowTime = sharedValue(selectedPhotos, p=>p.stamp.showTime)
-  const bulkSharedShowLocation = sharedValue(selectedPhotos, p=>p.stamp.showLocation)
   const bulkSharedDateFormat = sharedValue(selectedPhotos, p=>p.stamp.dateFormat)
   const bulkSharedPosition = sharedValue(selectedPhotos, p=>p.stamp.position)
   const bulkSharedFont = sharedValue(selectedPhotos, p=>p.stamp.stampFont ?? 'classic')
@@ -774,9 +745,8 @@ export default function StudioPage(){
     const newPhotoIds:string[]=[]
     const imageFiles=Array.from(files).filter(f=>f.type.startsWith('image/'))
     // Process in bounded batches instead of one giant Promise.all. Decoding EXIF
-    // for hundreds of full-size photos at once spikes memory and fires hundreds
-    // of simultaneous geocode requests; a small concurrency window keeps bulk
-    // uploads smooth and rate-limit-friendly.
+    // for hundreds of full-size photos at once spikes memory; a small
+    // concurrency window keeps bulk uploads smooth.
     const CHUNK_SIZE=6
     const newPhotos:Photo[]=[]
     setImportState({done:0,total:imageFiles.length})
@@ -787,8 +757,6 @@ export default function StudioPage(){
         newPhotoIds.push(id)
         const exif=await readExif(f)
         const prep=await preparePhoto(f)
-        let locationText='',hasExifLocation=false
-        if(exif.lat!==null&&exif.lon!==null){locationText=await reverseGeocode(exif.lat,exif.lon);hasExifLocation=!!locationText}
         if(prep.blob) void putPreview(id,prep.blob)
         // Make and keep the print-quality copy now, in the background.
         //
@@ -812,7 +780,7 @@ export default function StudioPage(){
           }
         })()
         return{width:prep.w,height:prep.h,id,file:f,fileName:f.name,url:prep.url,sessionId,filter:'original' as Filter,
-          stamp:{...DEFAULT_STAMP,capturedAt:exif.date,hasExifDate:!!exif.date,hasExifLocation,locationText,showDate:!!exif.date,showLocation:hasExifLocation},size:'4x6',crop:{...DEFAULT_CROP}}
+          stamp:{...DEFAULT_STAMP,capturedAt:exif.date,hasExifDate:!!exif.date,showDate:!!exif.date},size:'4x6',crop:{...DEFAULT_CROP}}
       }))
       newPhotos.push(...processed)
       // Paint each batch as it lands. Holding all of them until the last photo
@@ -913,8 +881,8 @@ export default function StudioPage(){
     if(img.complete && img.naturalWidth > 0) img.onload?.(new Event('load') as any)
     return ()=>{ cancelled=true; img.onload=null }
   },[previewPhoto?.id,previewPhoto?.url,previewPhoto?.filter,
-     previewPhoto?.stamp.showDate,previewPhoto?.stamp.showTime,previewPhoto?.stamp.showLocation,
-     previewPhoto?.stamp.locationText,previewPhoto?.stamp.customText,previewPhoto?.stamp.style,
+     previewPhoto?.stamp.showDate,previewPhoto?.stamp.showTime,
+     previewPhoto?.stamp.customText,previewPhoto?.stamp.style,
      previewPhoto?.stamp.position,previewPhoto?.stamp.dateFormat,
      previewPhoto?.stamp.stampFont,previewPhoto?.stamp.capturedAt,previewPhoto?.stamp.capturedAtOverride,
      previewPhoto?.size,previewPhoto?.crop?.mode,previewPhoto?.crop?.zoom,previewPhoto?.crop?.cx,previewPhoto?.crop?.cy,
@@ -934,8 +902,6 @@ export default function StudioPage(){
     setOrderItems(prev=>prev.map(i=>i.photoId===id?{...i,crop}:i))
     setCropPhotoId(null)
   }
-  const detectLocation=useCallback(()=>{navigator.geolocation?.getCurrentPosition(async pos=>{const loc=await reverseGeocode(pos.coords.latitude,pos.coords.longitude);if(loc&&activePhotoId)updateStamp(activePhotoId,{locationText:loc,showLocation:true})})},[activePhotoId])
-
   // FIX 12: Bulk apply helpers now read from current selectedIds at call time
   const applyBulkFilter=(f: Filter)=>{
     const ids=Array.from(selectedIds)
@@ -955,17 +921,10 @@ export default function StudioPage(){
     setPhotos(prev=>prev.map(p=>ids.includes(p.id)?{...p,size}:p))
     setAddedState(false)
   }
-  const detectBulkLocation=()=>{
-    navigator.geolocation?.getCurrentPosition(async pos=>{
-      const loc=await reverseGeocode(pos.coords.latitude,pos.coords.longitude)
-      if(loc){setBulkLocationText(loc); applyBulkStamp({locationText:loc,showLocation:true})}
-    })
-  }
-
   // FIX 12/17a: when bulk text/date overrides change (user typed) push to all selected.
   // When selection changes, push current override to newly-added photos.
   // Override is non-destructive — sets capturedAtOverride, preserving original capturedAt.
-  const lastBulkSync = useRef<{ids:string[],loc:string,custom:string,dateOverride:string}>({ids:[],loc:'',custom:'',dateOverride:''})
+  const lastBulkSync = useRef<{ids:string[],custom:string,dateOverride:string}>({ids:[],custom:'',dateOverride:''})
   useEffect(()=>{
     const currentIds = Array.from(selectedIds)
     const lastIds = lastBulkSync.current.ids
@@ -974,7 +933,6 @@ export default function StudioPage(){
       setPhotos(prev=>prev.map(p=>{
         if(!newlyAdded.includes(p.id)) return p
         const stampUpdates: Partial<StampConfig> = {}
-        if(bulkLocationText) {stampUpdates.locationText=bulkLocationText; stampUpdates.showLocation=true}
         if(bulkCustomText) stampUpdates.customText=bulkCustomText
         if(bulkDateOverride){
           const[y,m,d]=bulkDateOverride.split('-')
@@ -985,16 +943,15 @@ export default function StudioPage(){
         return Object.keys(stampUpdates).length>0 ? {...p,stamp:{...p.stamp,...stampUpdates}} : p
       }))
     }
-    lastBulkSync.current = {ids:currentIds, loc:bulkLocationText, custom:bulkCustomText, dateOverride:bulkDateOverride}
-  },[selectedIds, bulkLocationText, bulkCustomText, bulkDateOverride])
+    lastBulkSync.current = {ids:currentIds, custom:bulkCustomText, dateOverride:bulkDateOverride}
+  },[selectedIds, bulkCustomText, bulkDateOverride])
 
   // FIX 9: When user clears selection (drops below 2), reset bulk text overrides
   useEffect(()=>{
     if(selectedIds.size<2){
-      setBulkLocationText('')
       setBulkCustomText('')
       setBulkDateOverride('')
-      lastBulkSync.current = {ids:[], loc:'', custom:'', dateOverride:''}
+      lastBulkSync.current = {ids:[], custom:'', dateOverride:''}
     }
   },[selectedIds.size])
 
@@ -1329,15 +1286,15 @@ export default function StudioPage(){
     <div style={{maxWidth:680,margin:'0 auto',padding:'40px 20px'}}>
       <h1 style={{fontFamily:'Georgia, serif',fontSize:32,fontWeight:400,color:'#2B2A28',marginBottom:6,textAlign:'center'}}>Upload your photos</h1>
       <p style={{textAlign:'center',fontSize:14,color:'#8A6F5A',marginBottom:8}}>Drop as many as you like - choose which ones to print after</p>
-      <p style={{textAlign:'center',fontSize:12,color:'#8A6F5A',marginBottom:20,fontFamily:'Courier New, monospace'}}>We will automatically read the date and location from your photos</p>
+      <p style={{textAlign:'center',fontSize:12,color:'#8A6F5A',marginBottom:20,fontFamily:'Courier New, monospace'}}>We will automatically read the date from your photos</p>
       <div style={{background:'#EFE8DF',borderRadius:10,padding:'14px 16px',marginBottom:24,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
         <p style={{fontSize:13,color:'#8A6F5A',fontStyle:'italic'}}>Create a free archive to save your photos and easily track orders</p>
         <a href="/login" style={{fontFamily:'Courier New, monospace',fontSize:10,color:'#D97A43',textDecoration:'none',letterSpacing:'0.06em',textTransform:'uppercase',whiteSpace:'nowrap'}}>Sign in</a>
       </div>
       {/* Most photos that arrive via text or social media have been recompressed,
-          which strips the date and GPS we stamp with. Say so before they upload,
-          rather than letting them discover it on a printed photo. */}
-      <p style={{ fontSize: 12, color: '#8A6F5A', lineHeight: 1.5, margin: '0 0 10px' }}>Photos sent by text or downloaded from social media usually lose their date and location. For the best results, upload the original from your photo library.</p>
+          which strips the date we stamp with. Say so before they upload, rather
+          than letting them discover it on a printed photo. */}
+      <p style={{ fontSize: 12, color: '#8A6F5A', lineHeight: 1.5, margin: '0 0 10px' }}>Photos sent by text or downloaded from social media usually lose their date. For the best results, upload the original from your photo library.</p>
       <div onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();handleInitialFiles(e.dataTransfer.files)}} onClick={()=>fileInputRef.current?.click()}
         style={{border:'1.5px dashed rgba(43,42,40,0.2)',borderRadius:20,background:'#EFE8DF',padding:'56px 24px',textAlign:'center',cursor:'pointer'}}>
         <input ref={fileInputRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>handleInitialFiles(e.target.files)}/>
@@ -1389,7 +1346,7 @@ export default function StudioPage(){
         </div>
       </div>
 
-      {/* Reading dates and locations out of a big batch takes a few seconds.
+      {/* Reading dates out of a big batch takes a few seconds.
           Say so, or the page looks broken and people tap again. */}
       {importState&&(
         <div style={{marginBottom:16,background:'#EFE8DF',border:'1px solid rgba(43,42,40,0.1)',borderRadius:10,padding:'10px 14px'}}>
@@ -1641,17 +1598,6 @@ export default function StudioPage(){
                     </div>
                     <Toggle checked={activePhoto.stamp.showTime&&!!activePhoto.stamp.capturedAt} onChange={()=>updateStamp(activePhoto.id,{showTime:!activePhoto.stamp.showTime})}/>
                   </div>
-                  <div style={C.togRow}>
-                    <div style={{flex:1}}>
-                      <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Location</p>
-                      <input style={{...C.input,fontSize:13,padding:'8px 10px'}} placeholder="e.g. Tampa, FL"
-                        value={activePhoto.stamp.locationText} onChange={e=>updateStamp(activePhoto.id,{locationText:e.target.value})}/>
-                      {!activePhoto.stamp.locationText&&(
-                        <button onClick={detectLocation} style={{background:'none',border:'none',cursor:'pointer',fontSize:12,color:'#D97A43',textDecoration:'underline',padding:'4px 0',fontFamily:'inherit'}}>Use my current location</button>
-                      )}
-                    </div>
-                    <Toggle checked={activePhoto.stamp.showLocation&&!!activePhoto.stamp.locationText} onChange={()=>updateStamp(activePhoto.id,{showLocation:!activePhoto.stamp.showLocation})}/>
-                  </div>
                   <span style={{...C.mono,display:'block',marginBottom:4,marginTop:10}}>Custom text</span>
                   <input style={C.input} placeholder="e.g. Amalfi Coast, 2025" value={activePhoto.stamp.customText} onChange={e=>updateStamp(activePhoto.id,{customText:e.target.value})}/>
                 </div>
@@ -1722,7 +1668,7 @@ export default function StudioPage(){
                 <div style={C.head}><span style={C.mono}>Timestamp</span></div>
                 <div style={{padding:'8px 16px 14px'}}>
                   <p style={{fontSize:11,color:'#8A6F5A',fontStyle:'italic',marginBottom:10,lineHeight:1.4}}>
-                    Each photo keeps its own captured date &amp; location. Changes here apply to all selected.
+                    Each photo keeps its own captured date. Changes here apply to all selected.
                   </p>
                   {/* FIX 13/17a: bulk date override input — non-destructive, stored in capturedAtOverride */}
                   <div style={{padding:'10px 0',borderBottom:'0.5px solid rgba(43,42,40,0.06)'}}>
@@ -1789,16 +1735,6 @@ export default function StudioPage(){
                       )}
                     </div>
                     <Toggle checked={bulkSharedShowTime===true} onChange={()=>applyBulkStamp({showTime:!(bulkSharedShowTime===true)})}/>
-                  </div>
-                  <div style={C.togRow}>
-                    <div style={{flex:1}}>
-                      <p style={{fontSize:14,color:'#2B2A28',fontWeight:500,marginBottom:4}}>Location</p>
-                      <input style={{...C.input,fontSize:13,padding:'8px 10px'}} placeholder="Type to apply to all selected"
-                        value={bulkLocationText}
-                        onChange={e=>{setBulkLocationText(e.target.value); applyBulkStamp({locationText:e.target.value,showLocation:!!e.target.value})}}/>
-                      <button onClick={detectBulkLocation} style={{background:'none',border:'none',cursor:'pointer',fontSize:12,color:'#D97A43',textDecoration:'underline',padding:'4px 0',fontFamily:'inherit'}}>Use my current location</button>
-                    </div>
-                    <Toggle checked={bulkSharedShowLocation===true} onChange={()=>applyBulkStamp({showLocation:!(bulkSharedShowLocation===true)})}/>
                   </div>
                   <span style={{...C.mono,display:'block',marginBottom:4,marginTop:10}}>Custom text</span>
                   <input style={C.input} placeholder="Type to apply to all selected"
