@@ -26,7 +26,10 @@ export default function PrivacyPage() {
       <ul style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 24, paddingLeft: 24 }}>
         <li style={{ marginBottom: 8 }}><strong>Order information:</strong> name, shipping address, email address, and the photos you upload to be printed.</li>
         <li style={{ marginBottom: 8 }}><strong>Payment information:</strong> handled directly by Stripe, our payment processor. We do not store full card numbers.</li>
-        <li style={{ marginBottom: 8 }}><strong>Photo metadata:</strong> EXIF data (date taken, GPS coordinates if present) embedded in your photos. You can choose whether to display this on prints.</li>
+        {/* This clause used to promise a choice about printing location. The stamp
+            no longer prints one and the studio no longer reads GPS at all, so the
+            old wording claimed we collect something we deliberately do not. */}
+        <li style={{ marginBottom: 8 }}><strong>Photo metadata:</strong> we read only the date your camera recorded inside the photo, so we can stamp it. We do not read the GPS coordinates some photos carry. The date is yours to change or remove before you order.</li>
         <li style={{ marginBottom: 8 }}><strong>Device and usage data:</strong> browser type, IP address, pages visited, and similar technical information collected through cookies and analytics tools.</li>
       </ul>
 
