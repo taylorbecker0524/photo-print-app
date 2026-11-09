@@ -118,15 +118,28 @@ export function croppedPixels(
 
 export type StampConfig = {
   showDate: boolean; showTime: boolean
-  customText: string; style: StampStyle
+  style: StampStyle
   position: StampPos; capturedAt: string | null
   /** Bulk date override. Kept separate so the original EXIF date survives it. */
   capturedAtOverride: string | null
   hasExifDate: boolean
   dateFormat: 'modern' | 'classic'
   stampFont: StampFont
+  /** Legacy, never written now. See the note below. */
+  customText?: string
 }
 
+// A free-text line used to sit under the date, typed by the customer. It was
+// dropped: this product is one promise — the date, in the corner, the way a
+// disposable printed it — and an arbitrary caption turns it into a generic
+// photo-captioning tool. It also put whatever was typed onto paper, typos and
+// all, with no way to fix it once the lab had run.
+//
+// Unlike locationText it stays on the type, optional: saved stamp JSON from
+// old orders carries it, and /api/my-photos hands that JSON straight back to
+// the studio on a re-order. Nothing writes it and buildStampLines ignores it,
+// so those re-orders now print the date alone.
+//
 // Location used to be stamped under the date, taken from the photo's GPS data.
 // It was dropped: phones strip location far more often than they strip the
 // date, so it was missing on most uploads, and a stamp that appears on some
@@ -175,7 +188,6 @@ export function buildStampLines(stamp: StampConfig): string[] {
   } else if (stamp.showTime && cap) {
     lines.push(fmtTime(cap))
   }
-  if (stamp.customText) lines.push(stamp.customText)
   return lines
 }
 
