@@ -35,13 +35,13 @@ export const metadata: Metadata = {
     // preview against the image URL, so replacing og.jpg on its own leaves
     // everyone who has already shared the link showing the old picture for
     // weeks. Bumping the number is what makes those caches fetch again.
-    images: [{ url: '/og.jpg?v=2', width: 1200, height: 630, alt: 'A child in front of a lit Christmas tree, printed with the date stamped in the corner' }],
+    images: [{ url: '/og.jpg?v=3', width: 1200, height: 630, alt: 'A mother holding her baby daughter at sunset in Newport, printed with the date stamped in the corner' }],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Archive Yours — Date Stamp Photo Prints',
     description: 'Photos printed with the exact date stamped on them.',
-    images: ['/og.jpg?v=2'],
+    images: ['/og.jpg?v=3'],
   },
 }
 
