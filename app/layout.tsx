@@ -31,13 +31,17 @@ export const metadata: Metadata = {
     description: 'Photos printed with the exact date stamped on them, just like old disposable cameras.',
     url: SITE_URL,
     siteName: 'Archive Yours',
-    images: [{ url: '/og.jpg', width: 1200, height: 630, alt: 'Archive Yours photo prints' }],
+    // The ?v= is not decoration. Messaging apps and social sites cache a link
+    // preview against the image URL, so replacing og.jpg on its own leaves
+    // everyone who has already shared the link showing the old picture for
+    // weeks. Bumping the number is what makes those caches fetch again.
+    images: [{ url: '/og.jpg?v=2', width: 1200, height: 630, alt: 'A child in front of a lit Christmas tree, printed with the date stamped in the corner' }],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Archive Yours — Date Stamp Photo Prints',
     description: 'Photos printed with the exact date stamped on them.',
-    images: ['/og.jpg'],
+    images: ['/og.jpg?v=2'],
   },
 }
 
