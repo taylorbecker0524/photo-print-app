@@ -238,7 +238,7 @@ async function readExif(file: File): Promise<{ date: string | null }> {
 }
 
 const DEFAULT_STAMP: StampConfig = {
-  showDate:false,showTime:false,customText:'',
+  showDate:false,showTime:false,
   style:'burn',position:'bl',capturedAt:null,capturedAtOverride:null,
   hasExifDate:false,
   dateFormat:'classic',stampFont:'classic'
@@ -267,7 +267,6 @@ function StampBullets({stamp,filter}:{stamp:StampConfig;filter:Filter}){
   const cap = effectiveCapturedAt(stamp)
   if(stamp.showDate&&cap) items.push(fmtDate(cap,stamp.dateFormat??'classic'))
   if(stamp.showTime&&cap) items.push(fmtTime(cap))
-  if(stamp.customText) items.push(stamp.customText)
   if(stamp.style!=='none'){
     items.push(`${stamp.style==='burn'?'Classic burn':'Overlay'} - ${stamp.position==='bl'?'bottom left':stamp.position==='br'?'bottom right':stamp.position==='tl'?'top left':'top right'}`)
   }
@@ -558,7 +557,6 @@ export default function StudioPage(){
   // FIX 12: controlled bulk override values — these are the source of truth
   // for bulk text fields. When the selection changes, we re-apply current
   // overrides to any newly-added selected photo via a sync effect.
-  const [bulkCustomText,setBulkCustomText]=useState('')
   const [bulkDateOverride,setBulkDateOverride]=useState('')  // FIX 13: 'YYYY-MM-DD' or '' for no override
   const [isMobile,setIsMobile]=useState(false)
   // FIX A1 (P0 launch blocker): upload state for the photo-upload-then-checkout flow
@@ -882,7 +880,7 @@ export default function StudioPage(){
     return ()=>{ cancelled=true; img.onload=null }
   },[previewPhoto?.id,previewPhoto?.url,previewPhoto?.filter,
      previewPhoto?.stamp.showDate,previewPhoto?.stamp.showTime,
-     previewPhoto?.stamp.customText,previewPhoto?.stamp.style,
+     previewPhoto?.stamp.style,
      previewPhoto?.stamp.position,previewPhoto?.stamp.dateFormat,
      previewPhoto?.stamp.stampFont,previewPhoto?.stamp.capturedAt,previewPhoto?.stamp.capturedAtOverride,
      previewPhoto?.size,previewPhoto?.crop?.mode,previewPhoto?.crop?.zoom,previewPhoto?.crop?.cx,previewPhoto?.crop?.cy,
@@ -924,7 +922,7 @@ export default function StudioPage(){
   // FIX 12/17a: when bulk text/date overrides change (user typed) push to all selected.
   // When selection changes, push current override to newly-added photos.
   // Override is non-destructive — sets capturedAtOverride, preserving original capturedAt.
-  const lastBulkSync = useRef<{ids:string[],custom:string,dateOverride:string}>({ids:[],custom:'',dateOverride:''})
+  const lastBulkSync = useRef<{ids:string[],dateOverride:string}>({ids:[],dateOverride:''})
   useEffect(()=>{
     const currentIds = Array.from(selectedIds)
     const lastIds = lastBulkSync.current.ids
@@ -933,7 +931,6 @@ export default function StudioPage(){
       setPhotos(prev=>prev.map(p=>{
         if(!newlyAdded.includes(p.id)) return p
         const stampUpdates: Partial<StampConfig> = {}
-        if(bulkCustomText) stampUpdates.customText=bulkCustomText
         if(bulkDateOverride){
           const[y,m,d]=bulkDateOverride.split('-')
           const dt=new Date(+y,+m-1,+d,12,0,0)
@@ -943,15 +940,14 @@ export default function StudioPage(){
         return Object.keys(stampUpdates).length>0 ? {...p,stamp:{...p.stamp,...stampUpdates}} : p
       }))
     }
-    lastBulkSync.current = {ids:currentIds, custom:bulkCustomText, dateOverride:bulkDateOverride}
-  },[selectedIds, bulkCustomText, bulkDateOverride])
+    lastBulkSync.current = {ids:currentIds, dateOverride:bulkDateOverride}
+  },[selectedIds, bulkDateOverride])
 
   // FIX 9: When user clears selection (drops below 2), reset bulk text overrides
   useEffect(()=>{
     if(selectedIds.size<2){
-      setBulkCustomText('')
       setBulkDateOverride('')
-      lastBulkSync.current = {ids:[], custom:'', dateOverride:''}
+      lastBulkSync.current = {ids:[], dateOverride:''}
     }
   },[selectedIds.size])
 
@@ -1598,8 +1594,6 @@ export default function StudioPage(){
                     </div>
                     <Toggle checked={activePhoto.stamp.showTime&&!!activePhoto.stamp.capturedAt} onChange={()=>updateStamp(activePhoto.id,{showTime:!activePhoto.stamp.showTime})}/>
                   </div>
-                  <span style={{...C.mono,display:'block',marginBottom:4,marginTop:10}}>Custom text</span>
-                  <input style={C.input} placeholder="e.g. Amalfi Coast, 2025" value={activePhoto.stamp.customText} onChange={e=>updateStamp(activePhoto.id,{customText:e.target.value})}/>
                 </div>
               </div>
             )}
@@ -1736,10 +1730,6 @@ export default function StudioPage(){
                     </div>
                     <Toggle checked={bulkSharedShowTime===true} onChange={()=>applyBulkStamp({showTime:!(bulkSharedShowTime===true)})}/>
                   </div>
-                  <span style={{...C.mono,display:'block',marginBottom:4,marginTop:10}}>Custom text</span>
-                  <input style={C.input} placeholder="Type to apply to all selected"
-                    value={bulkCustomText}
-                    onChange={e=>{setBulkCustomText(e.target.value); applyBulkStamp({customText:e.target.value})}}/>
                 </div>
               </div>
             )}
