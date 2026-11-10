@@ -151,6 +151,10 @@ export const CREATOR_GIFTS: CreatorGift[] = [
   { handle: 'alikittykatz',          issuedTo: '@alikittykatz — Ali Katz (70K)',                   expiresAt: GIFT_EXPIRES },
   { handle: 'its_allyjoy',           issuedTo: '@its_allyjoy — Ally Joy General (57K)',            expiresAt: GIFT_EXPIRES },
 
+  // Added after campaign 1 went out, so she is not one of the fifteen ticked
+  // in the sheet. Same terms; the code comes off her handle like the rest.
+  { handle: 'veeshoney',             issuedTo: '@veeshoney — Vanessa Fitzgerald (77.2K)',          expiresAt: GIFT_EXPIRES },
+
   // The original ARCHIVE-GIFT placeholder used to sit here. It was spent on the
   // test order and is gone now, so a stranger guessing the obvious word gets
   // nothing. That order keeps its own promo_code string in the database; this
