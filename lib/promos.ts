@@ -187,6 +187,25 @@ function giftToPromo(g: CreatorGift): Promo {
  */
 const STANDALONE_PROMOS: Promo[] = [
   {
+    // A personal gift, not a campaign code. It sits here rather than in
+    // CREATOR_GIFTS because that list is campaign 1 — the fifteen ticked in the
+    // outreach sheet — and a one-off should not quietly become a sixteenth
+    // creator in any count taken off that array. Same terms as a creator gift,
+    // and the same single redemption, so it cannot be passed around.
+    code: 'ARCHIVE-DENYSE',
+    kind: 'gift',
+    issuedTo: 'Denyse — personal gift',
+    label: '25 free prints + free shipping',
+    freeQty: 25,
+    freeSize: '4x6',
+    freeShipping: true,
+    // She may have ordered already; gifting her anyway is the point.
+    newCustomersOnly: false,
+    maxRedemptions: 1,
+    expiresAt: GIFT_EXPIRES,
+    active: true,
+  },
+  {
     // A disposable code for testing checkout end to end.
     //
     // Deliberately small and deliberately NOT free shipping, for two reasons.
