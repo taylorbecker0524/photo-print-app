@@ -89,6 +89,16 @@ export type CreatorGift = {
   expiresAt: string
   /** Set false to revoke this one creator without touching the others. */
   active?: boolean
+  /**
+   * Override the stem the code is built from.
+   *
+   * Only for a handle the twelve-character cut mangles. brynley.joyner becomes
+   * BRYNLEYJOYNE, losing its last letter, which reads as a typo and gets typed
+   * back wrong. `handle` above stays the real one, for records and for the
+   * outreach sheet; this changes only what follows ARCHIVE-. It still goes
+   * through codeStemFor, so the uppercase, strip and length rules all hold.
+   */
+  codeStem?: string
   /** Override the standard offer for one creator if you ever need to. */
   freeQty?: number
   freeSize?: string
@@ -154,7 +164,7 @@ export const CREATOR_GIFTS: CreatorGift[] = [
   // Added after campaign 1 went out, so she is not one of the fifteen ticked
   // in the sheet. Same terms; the code comes off her handle like the rest.
   { handle: 'veeshoney',             issuedTo: '@veeshoney — Vanessa Fitzgerald (77.2K)',          expiresAt: GIFT_EXPIRES },
-  { handle: 'brynley.joyner',        issuedTo: '@brynley.joyner — Brynley Lacy (381K)',            expiresAt: GIFT_EXPIRES },
+  { handle: 'brynley.joyner',        issuedTo: '@brynley.joyner — Brynley Lacy (381K)',            expiresAt: GIFT_EXPIRES, codeStem: 'brynjoyner' },
 
   // The original ARCHIVE-GIFT placeholder used to sit here. It was spent on the
   // test order and is gone now, so a stranger guessing the obvious word gets
@@ -167,7 +177,7 @@ function giftToPromo(g: CreatorGift): Promo {
   const freeSize = g.freeSize ?? GIFT_TERMS.freeSize
   const freeShipping = g.freeShipping ?? GIFT_TERMS.freeShipping
   return {
-    code: `ARCHIVE-${codeStemFor(g.handle)}`,
+    code: `ARCHIVE-${codeStemFor(g.codeStem ?? g.handle)}`,
     kind: 'gift',
     issuedTo: g.issuedTo,
     label: `${freeQty} free prints${freeShipping ? ' + free shipping' : ''}`,
