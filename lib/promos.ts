@@ -154,6 +154,7 @@ export const CREATOR_GIFTS: CreatorGift[] = [
   // Added after campaign 1 went out, so she is not one of the fifteen ticked
   // in the sheet. Same terms; the code comes off her handle like the rest.
   { handle: 'veeshoney',             issuedTo: '@veeshoney — Vanessa Fitzgerald (77.2K)',          expiresAt: GIFT_EXPIRES },
+  { handle: 'brynley.joyner',        issuedTo: '@brynley.joyner — Brynley Lacy (381K)',            expiresAt: GIFT_EXPIRES },
 
   // The original ARCHIVE-GIFT placeholder used to sit here. It was spent on the
   // test order and is gone now, so a stranger guessing the obvious word gets
@@ -190,6 +191,22 @@ function giftToPromo(g: CreatorGift): Promo {
  * is the only thing standing between you and an open tab if the code escapes.
  */
 const STANDALONE_PROMOS: Promo[] = [
+  {
+    // Another personal gift. No Instagram handle was found for her, so the
+    // code is her name rather than a handle stem; if she turns out to have one
+    // the code still works, it just does not match the creator convention.
+    code: 'ARCHIVE-JENTRANSUE',
+    kind: 'gift',
+    issuedTo: 'Jen Transue',
+    label: '25 free prints + free shipping',
+    freeQty: 25,
+    freeSize: '4x6',
+    freeShipping: true,
+    newCustomersOnly: false,
+    maxRedemptions: 1,
+    expiresAt: GIFT_EXPIRES,
+    active: true,
+  },
   {
     // A personal gift, not a campaign code. It sits here rather than in
     // CREATOR_GIFTS because that list is campaign 1 — the fifteen ticked in the
