@@ -165,6 +165,7 @@ export const CREATOR_GIFTS: CreatorGift[] = [
   // in the sheet. Same terms; the code comes off her handle like the rest.
   { handle: 'veeshoney',             issuedTo: '@veeshoney — Vanessa Fitzgerald (77.2K)',          expiresAt: GIFT_EXPIRES },
   { handle: 'brynley.joyner',        issuedTo: '@brynley.joyner — Brynley Lacy (381K)',            expiresAt: GIFT_EXPIRES, codeStem: 'brynjoyner' },
+  { handle: 'annaherrin',            issuedTo: '@annaherrin — Anna Herrin (222K)',                  expiresAt: GIFT_EXPIRES },
 
   // The original ARCHIVE-GIFT placeholder used to sit here. It was spent on the
   // test order and is gone now, so a stranger guessing the obvious word gets
